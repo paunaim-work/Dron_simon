@@ -16,8 +16,9 @@ if strcmp(pl.tipus, 'complexa')
 else
     th = dom.theta;
 end
-set(vis.hVent, 'XData', fletxa(vis.baseVent, vis.longFletxa * [cos(th) sin(th)], 1), ...
-               'YData', fletxa(vis.baseVent, vis.longFletxa * [cos(th) sin(th)], 2));
+v = vis.longFletxa * [cos(th) sin(th)];
+set(vis.hVent, 'XData', fletxa(vis.baseVent - v / 2, v, 1), ...
+               'YData', fletxa(vis.baseVent - v / 2, v, 2));
 
 % --- Dron, trajectoria i deteccions ---
 set(vis.hTraj, 'XData', hist.pos(1:n, 1), 'YData', hist.pos(1:n, 2));
@@ -72,9 +73,7 @@ drawnow;
 if cfg.visual.pausa > 0
     pause(cfg.visual.pausa);
 end
-if ~isempty(vis.video)
-    writeVideo(vis.video, getframe(vis.fig));
-end
+vis.video = video_afegir(vis.video, vis.fig);
 end
 
 % ---------------------------------------------------------------------

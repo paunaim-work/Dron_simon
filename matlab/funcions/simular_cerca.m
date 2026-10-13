@@ -15,6 +15,14 @@ function res = simular_cerca(cfg)
 %   del radi de deteccio de la font la cerca acaba; si no, (5) mesura i
 %   actualitza el que sap.
 
+% Condicions inicials aleatories (si cfg.atzar.activat)
+cfg = aplicar_escenari_aleatori(cfg);
+
+% Llavor de la turbulencia i del soroll: si es buida se'n tria una i es
+% desa a res.cfg.llavor perque la prova es pugui repetir
+if isempty(cfg.llavor)
+    cfg.llavor = mod(floor(now * 1e7) + 7919, 2^31 - 1);
+end
 fixar_llavor(cfg.llavor);
 dom = crear_domini(cfg);
 alg = lower(cfg.algorisme);
@@ -56,6 +64,8 @@ end
 vis = [];
 if cfg.visual.mostrar
     vis = visualitzacio_inicialitzar(cfg, dom, pl, cerc, posFont, hist, n, alg);
+    % Si la simulacio s'interromp (error, Ctrl+C), el video es tanca igualment
+    tancarVideo = onCleanup(@() video_tancar_segur(vis.video)); %#ok<NASGU>
 end
 
 % --- Bucle de cerca ---
@@ -93,8 +103,10 @@ for t = 1:N
     end
 end
 
-if ~isempty(vis) && ~vis.tancada
-    vis = visualitzacio_actualitzar(vis, cfg, dom, pl, cerc, posFont, hist, n, alg, trobada, true);
+if ~isempty(vis)
+    if ~vis.tancada
+        vis = visualitzacio_actualitzar(vis, cfg, dom, pl, cerc, posFont, hist, n, alg, trobada, true);
+    end
     visualitzacio_finalitzar(vis);
 end
 

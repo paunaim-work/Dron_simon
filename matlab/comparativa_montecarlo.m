@@ -1,9 +1,11 @@
 %% COMPARATIVA MONTE CARLO DELS ALGORISMES DE CERCA
 %
 %  Repeteix moltes cerques (sense animacio) per a cada combinacio de
-%  ploma i algorisme, canviant la llavor aleatoria (realitzacio de la
-%  turbulencia i del soroll del sensor) i, opcionalment, la posicio
-%  inicial del dron. Calcula la taxa d'exit i el temps de cerca.
+%  ploma i algorisme i calcula la taxa d'exit i el temps de cerca. A cada
+%  repeticio canvia la turbulencia i el soroll del sensor i, si
+%  escenarisAleatoris = true, tambe l'escenari (posicio de la fuga i del
+%  dron, vent...). La repeticio r te el mateix escenari per a tots els
+%  algorismes, perque la comparacio sigui justa.
 
 clear; close all; clc;
 carpeta = fileparts(mfilename('fullpath'));
@@ -16,8 +18,7 @@ addpath(fullfile(carpeta, 'funcions'));
 nRepeticions     = 20;                         % cerques per combinacio
 plomes           = {'gaussiana', 'complexa'};
 algorismes       = {'infotaxis', 'gradient'};
-posInicialAtzar  = false;   % true: el dron surt d'un punt a l'atzar
-distanciaMinima  = 150;     % m (nomes si posInicialAtzar)
+escenarisAleatoris = true;  % false: sempre l'escenari fix de configuracio_defecte.m
 %% ===========================================================
 
 nP = numel(plomes);
@@ -34,15 +35,9 @@ for ip = 1:nP
             cfg.algorisme  = algorismes{ia};
             cfg.visual.mostrar = false;
             cfg.llavor = 1000 * ip + r;
-            if posInicialAtzar
-                fixar_llavor(cfg.llavor + 7);
-                d = 0;
-                while d < distanciaMinima
-                    p = [rand * cfg.domini.Lx, rand * cfg.domini.Ly];
-                    d = norm(p - cfg.font.pos);
-                end
-                cfg.dron.posInicial = p;
-            end
+            cfg.atzar.activat = escenarisAleatoris;
+            cfg.atzar.llavor  = r;          % escenari r (igual per a tots els algorismes)
+            cfg.atzar.mostrar = false;
             res = simular_cerca(cfg);
             if res.trobada
                 tt(r) = res.temps;
