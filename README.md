@@ -19,13 +19,33 @@ Hi ha dues versions independents: la **2D** (`matlab/`), on el dron vola a una a
    ```matlab
    cfg.tipusPloma = 'gaussiana';   % 'gaussiana'  o  'complexa'
    cfg.algorisme  = 'infotaxis';   % 'infotaxis'  o  'gradient'
-   cfg.llavor     = 1;             % canvia-la per veure una altra realització
+   cfg.atzar.activat = true;       % escenari aleatori (false = sempre el mateix)
    ```
 3. Executa'l (F5). S'obre una finestra amb l'animació i, en acabar, surt un resum a la consola.
 
-Si poses `preguntarOpcions = true`, el programa et demana la ploma i l'algorisme per la finestra de comandes. Per desar un vídeo `.mp4`, posa `cfg.visual.gravarVideo = true`.
+Si poses `preguntarOpcions = true`, el programa et demana la ploma, l'algorisme i el tipus d'escenari per la finestra de comandes.
 
-Per comparar els algorismes estadísticament (mètode de **Monte Carlo**: repetir la simulació moltes vegades amb nombres aleatoris diferents i fer estadística dels resultats), executa `comparativa_montecarlo.m`. Fa 20 cerques per combinació sense animació i en mostra la taxa d'èxit i el temps de cerca.
+### Escenaris aleatoris
+
+Amb `cfg.atzar.activat = true` (l'opció per defecte a `main_simulacio.m`), cada execució sorteja unes condicions inicials noves: la posició de la fuga, la posició inicial del dron i la direcció i la velocitat del vent. El dron sempre surt a una distància mínima de la fuga (150 m) i **a sotavent**, és a dir, vent avall, dins d'un con de ±60° al voltant de la direcció del vent. És el cas realista: la contaminació s'ha detectat vent avall i el dron hi va a buscar-ne l'origen.
+
+- Amb `cfg.atzar.activat = false` sempre es fa servir el mateix escenari, el de `configuracio_defecte.m`.
+- Es pot triar què es sorteja i en quins marges amb els camps `cfg.atzar.*` de `configuracio_defecte.m`: `font`, `dron`, `ventDireccio`, `ventVelocitat`, `estabilitat` (classe A–F), `emissio` (taxa Q), i els seus rangs.
+- Hi ha dues llavors (*seeds*: el número que inicia el generador de nombres aleatoris). `cfg.atzar.llavor` controla l'escenari i `cfg.llavor` la turbulència i el soroll del sensor. Si són `[]`, canvien cada cop. En acabar, la consola escriu les llavors utilitzades: si les copies a `main_simulacio.m`, pots repetir exactament aquella prova.
+
+### Gravar un vídeo
+
+Posa `cfg.visual.gravarVideo = true`. El vídeo es desa a la carpeta **`matlab/videos/`**, que es crea automàticament, amb un nom que inclou la ploma, l'algorisme, la data i l'hora (per exemple `cerca_2d_gaussiana_infotaxis_20261013_153000.mp4`). La consola indica on s'ha desat. El darrer fotograma es manté 2 s perquè es pugui llegir el resultat.
+
+- `cfg.visual.formatVideo` pot ser `'mp4'` (per defecte), `'avi'` o `'gif'` (GIF animat, útil per a presentacions; es redueix a la meitat de resolució perquè no ocupi tant).
+- Si l'ordinador no pot gravar MP4 (MATLAB a Linux), es desa en AVI. GNU Octave no té `VideoWriter` i desa un GIF.
+- Si tanques la finestra o atures la simulació amb Ctrl+C, el vídeo gravat fins aquell moment es tanca bé i es pot reproduir.
+
+Els fitxers `.asv` que poden aparèixer al costat dels scripts no tenen res a veure amb el vídeo: són les còpies de seguretat automàtiques que fa l'editor de MATLAB quan modifiques un fitxer. Es poden esborrar sense problema.
+
+### Comparativa Monte Carlo
+
+Per comparar els algorismes estadísticament (mètode de **Monte Carlo**: repetir la simulació moltes vegades amb nombres aleatoris diferents i fer estadística dels resultats), executa `comparativa_montecarlo.m`. Fa 20 cerques per combinació sense animació i en mostra la taxa d'èxit i el temps de cerca. Amb `escenarisAleatoris = true`, cada repetició té un escenari diferent, però el mateix per a tots els algorismes, perquè la comparació sigui justa.
 
 També funciona amb GNU Octave (provat amb la versió 8.4). Com que Octave dibuixa més lentament, val la pena posar `cfg.visual.cadaNPassos = 5`.
 
@@ -155,6 +175,11 @@ L'infotaxis és més ràpid i més fiable, sobretot amb la ploma complexa, on el
 | `dron.velocitat` | 5 m/s | defineix Δt = dx/v |
 | `dron.maxPassos` | 2500 | límit d'autonomia |
 | `vent.direccio` | 0° | cap on bufa el vent |
+| `atzar.activat` | false (true a `main_simulacio.m`) | escenari aleatori |
+| `atzar.font`, `atzar.dron`, `atzar.ventDireccio`, `atzar.ventVelocitat` | true | què es sorteja |
+| `atzar.estabilitat`, `atzar.emissio` | false | també es poden sortejar |
+| `atzar.distanciaMinima` | 150 m | distància mínima dron–fuga |
+| `atzar.dronASotavent`, `atzar.angleMaxim` | true, 60° | el dron surt vent avall |
 | `sensor.sensibilitat` | 1 | comptes/s per unitat de concentració (baixa-la per fer el senyal més diluït) |
 | `sensor.fons` | 0.02 /s | deteccions falses |
 | `gauss.estabilitat` | 'D' | classe A..F |
@@ -163,6 +188,9 @@ L'infotaxis és més ràpid i més fiable, sobretot amb la ploma complexa, on el
 | `infotaxis.saturacio` | Inf | 1 = sensor binari |
 | `infotaxis.factorModel` | 1 | per simular un error de calibratge del model intern |
 | `gradient.alfa` | 0.6 | filtre del gradient (0 = cap) |
+| `visual.gravarVideo` | false | desa un vídeo a `videos/` |
+| `visual.formatVideo` | 'mp4' | 'mp4', 'avi' o 'gif' |
+| `visual.fpsVideo` | 15 | fotogrames per segon del vídeo |
 
 ## Versió 3D (`matlab3d/`)
 

@@ -39,6 +39,30 @@ cfg.dron.radiDeteccio = [];         % la fuga es troba a menys d'aquesta distanc
 cfg.vent.direccio = 0;          % graus: direccio CAP ON bufa (0 = cap a +x)
 
 % =====================================================================
+%  ESCENARI ALEATORI (condicions inicials diferents a cada prova)
+% =====================================================================
+% Si activat = true, abans de cada simulacio se sortegen els parametres
+% marcats amb true (vegeu aplicar_escenari_aleatori.m). Si es false, es
+% fan servir els valors fixos d'aquest fitxer.
+cfg.atzar.activat         = false;
+cfg.atzar.llavor          = [];        % llavor de l'escenari ([] = diferent cada cop)
+cfg.atzar.mostrar         = true;      % escriu l'escenari sortejat a la consola
+cfg.atzar.font            = true;      % posicio de la fuga
+cfg.atzar.dron            = true;      % posicio inicial del dron
+cfg.atzar.ventDireccio    = true;      % direccio del vent
+cfg.atzar.ventVelocitat   = true;      % velocitat del vent
+cfg.atzar.estabilitat     = false;     % classe d'estabilitat (ploma gaussiana)
+cfg.atzar.emissio         = false;     % taxa d'emissio Q
+cfg.atzar.rangDireccio    = [0 360];   % graus
+cfg.atzar.rangVelocitat   = [1.5 4.5]; % m/s
+cfg.atzar.classes         = 'BCDE';    % classes d'estabilitat possibles
+cfg.atzar.rangEmissio     = [0.5 2];   % factor que multiplica Q
+cfg.atzar.distanciaMinima = 150;       % distancia minima entre el dron i la fuga (m)
+cfg.atzar.marge           = 20;        % distancia minima a les vores del domini (m)
+cfg.atzar.dronASotavent   = true;      % el dron surt vent avall de la fuga...
+cfg.atzar.angleMaxim      = 60;        % ...dins d'un con de +-angleMaxim graus
+
+% =====================================================================
 %  SENSOR (comptador de deteccions, tipus Geiger / detector de particules)
 %  Nombre de comptes en un pas: k ~ Poisson( dt*(sensibilitat*c + fons) )
 % =====================================================================
@@ -109,6 +133,9 @@ cfg.visual.mostrar      = true;    % animacio en directe
 cfg.visual.cadaNPassos  = 1;       % redibuixa cada N passos (puja'l si va lent)
 cfg.visual.pausa        = 0.01;    % pausa entre fotogrames (s)
 cfg.visual.resolucio    = 2.5;     % resolucio del mapa de la ploma (m)
-cfg.visual.gravarVideo  = false;   % desa un video .mp4 (nomes MATLAB)
-cfg.visual.fitxerVideo  = 'cerca_dron.mp4';
+cfg.visual.gravarVideo  = false;   % desa un video de l'animacio
+cfg.visual.formatVideo  = 'mp4';   % 'mp4' | 'avi' | 'gif'
+cfg.visual.fpsVideo     = 15;      % fotogrames per segon del video
+cfg.visual.carpetaVideo = '';      % carpeta on es desa ('' = carpeta 'videos' dins la carpeta actual)
+cfg.visual.nomVideo     = '';      % nom del fitxer ('' = automatic, amb ploma, algorisme, data i hora)
 end

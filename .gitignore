@@ -8,3 +8,6 @@ octave-workspace
 *.mp4
 *.avi
 *.mat
+
+# Videos generats per la simulacio
+videos/
