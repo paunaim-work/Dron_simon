@@ -1,0 +1,86 @@
+%% SIMULACIO DE LA CERCA DE L'ORIGEN D'UNA FUGA AMB UN DRON AUTONOM
+%
+%  Simula una fuga (ploma de contaminant) i un dron que en busca l'origen
+%  nomes a partir de les lectures del seu sensor. Es pot triar:
+%
+%    * El model de ploma:
+%        'gaussiana' -> ploma gaussiana estacionaria (Pasquill-Gifford)
+%        'complexa'  -> ploma turbulenta de "puffs" amb vent variable
+%                       (meandreig, rafegues i remolins): sinuosa i
+%                       intermitent
+%
+%    * L'algorisme de cerca:
+%        'infotaxis' -> estrategia de l'article de Vergassola, Villermaux
+%                       i Shraiman, Nature 445, 406-409 (2007): el dron
+%                       es mou on espera guanyar mes informacio sobre la
+%                       posicio de la font
+%        'gradient'  -> quimiotaxi classica: el dron puja pel gradient de
+%                       concentracio mesurat amb 4 sensors en creu
+%
+%  Executa aquest script (F5). Tots els parametres (domini, vent, sensor,
+%  ploma, algorismes...) son a funcions/configuracio_defecte.m i es poden
+%  canviar aqui mateix abans de cridar simular_cerca.
+
+clear; close all; clc;
+carpeta = fileparts(mfilename('fullpath'));
+if isempty(carpeta)
+    carpeta = pwd;
+end
+addpath(fullfile(carpeta, 'funcions'));
+
+cfg = configuracio_defecte();
+
+%% ===================== TRIA LES OPCIONS AQUI =====================
+cfg.tipusPloma = 'gaussiana';   % 'gaussiana'  o  'complexa'
+cfg.algorisme  = 'infotaxis';   % 'infotaxis'  o  'gradient'
+cfg.llavor     = 1;             % canvia-la per veure una altra realitzacio ([] = aleatoria)
+
+% Posa-ho a true per triar les opcions per la finestra de comandes
+preguntarOpcions = false;
+
+% Visualitzacio
+cfg.visual.mostrar     = true;
+cfg.visual.cadaNPassos = 1;      % puja'l (p. ex. 5) si l'animacio va lenta
+cfg.visual.pausa       = 0.01;   % s entre fotogrames (alenteix l'animacio)
+cfg.visual.gravarVideo = false;  % true -> desa cerca_dron.mp4 (MATLAB)
+
+% Exemples d'altres parametres que pots canviar:
+% cfg.font.pos          = [60 150];   % on es la fuga (m)
+% cfg.dron.posInicial   = [340 215];  % d'on surt el dron (m)
+% cfg.vent.direccio     = 0;          % cap on bufa el vent (graus)
+% cfg.gauss.estabilitat = 'D';        % classe d'estabilitat A..F
+% cfg.sensor.sensibilitat = 0.3;      % sensor menys sensible -> senyal mes diluit
+% cfg.infotaxis.saturacio = 1;        % sensor binari (deteccio si/no)
+%% =================================================================
+
+if preguntarOpcions
+    op = input('Tipus de ploma: 1 = gaussiana, 2 = complexa  [1]: ');
+    if isequal(op, 2)
+        cfg.tipusPloma = 'complexa';
+    else
+        cfg.tipusPloma = 'gaussiana';
+    end
+    op = input('Algorisme: 1 = infotaxis (article), 2 = gradient  [1]: ');
+    if isequal(op, 2)
+        cfg.algorisme = 'gradient';
+    else
+        cfg.algorisme = 'infotaxis';
+    end
+end
+
+fprintf('Ploma: %s | Algorisme: %s\n', cfg.tipusPloma, cfg.algorisme);
+res = simular_cerca(cfg);
+
+%% Resum
+fprintf('\n=============== RESULTAT ===============\n');
+if res.trobada
+    fprintf('Font TROBADA\n');
+else
+    fprintf('Font NO trobada (limit de %d passos)\n', cfg.dron.maxPassos);
+end
+fprintf('Temps de cerca:       %8.0f s (%.1f min)\n', res.temps, res.temps / 60);
+fprintf('Passos:               %8d\n', res.passos);
+fprintf('Distancia recorreguda:%8.0f m\n', res.recorregut);
+fprintf('Distancia inicial:    %8.0f m\n', res.hist.dist(1));
+fprintf('Deteccions:           %8d\n', res.deteccions);
+fprintf('========================================\n');
