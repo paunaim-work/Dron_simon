@@ -33,15 +33,19 @@ dom.z3 = 0:r3(2):cfg.domini.Lz;
 % Moviments possibles [diy dix diz]: quiet, +x, -x, +y, -y, amunt, avall
 dom.moviments = [0 0 0; 0 1 0; 0 -1 0; 1 0 0; -1 0 0; 0 0 1; 0 0 -1];
 
-% Radi de deteccio (esfera): desplacaments de les cel.les que el dron "veu"
+% Zona de deteccio (cilindre): la fuga es troba si el dron hi es a menys
+% de radiDet en horitzontal i a menys de tolAlcada en vertical (per
+% defecte 0: ha de ser exactament a la mateixa alcada que la fuga).
+% Desplacaments [diy dix diz] de les cel.les d'aquesta zona:
 if isempty(cfg.dron.radiDeteccio)
     dom.radiDet = 1.5 * dx;
 else
     dom.radiDet = cfg.dron.radiDeteccio;
 end
+dom.tolAlcada = cfg.dron.toleranciaAlcada;
 mh = floor(dom.radiDet / dx);
-mv = floor(dom.radiDet / dz);
+mv = floor(dom.tolAlcada / dz + 1e-9);
 [DI, DJ, DK] = ndgrid(-mh:mh, -mh:mh, -mv:mv);
-dins = sqrt((DI * dx).^2 + (DJ * dx).^2 + (DK * dz).^2) <= dom.radiDet + 1e-9;
+dins = hypot(DI * dx, DJ * dx) <= dom.radiDet + 1e-9 & abs(DK * dz) <= dom.tolAlcada + 1e-9;
 dom.offDet = [DI(dins) DJ(dins) DK(dins)];
 end

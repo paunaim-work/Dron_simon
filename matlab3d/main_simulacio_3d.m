@@ -83,7 +83,8 @@ res = simular_cerca_3d(cfg);
 %% Resum
 fprintf('\n=============== RESULTAT ===============\n');
 if res.trobada
-    fprintf('Font TROBADA a [%.0f %.0f %.0f] m\n', res.cfg.font.pos);
+    fprintf('Font TROBADA a [%.0f %.0f %.0f] m (dron a [%.0f %.0f %.0f] m)\n', ...
+            res.cfg.font.pos, res.hist.pos(end, :));
 else
     fprintf('Font NO trobada (limit de %d passos)\n', cfg.dron.maxPassos);
 end

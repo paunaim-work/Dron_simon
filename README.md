@@ -202,7 +202,7 @@ L'infotaxis és més ràpid i més fiable, sobretot amb la ploma complexa, on el
 
 **Què canvia respecte de la 2D:**
 
-- **Domini:** volum de 400 × 300 × 40 m amb cel·les de 5 m. La fuga és per defecte a 10 m d'alçada (`cfg.font.pos = [60 150 10]`) i el dron surt a 30 m. El dron pot fer 7 accions: quedar-se quiet, ±x, ±y, pujar o baixar.
+- **Domini:** volum de 400 × 300 × 40 m amb cel·les de 5 m. La fuga és per defecte a 10 m d'alçada (`cfg.font.pos = [60 150 10]`) i el dron surt a 30 m. El dron pot fer 7 accions: quedar-se quiet, ±x, ±y, pujar o baixar. La fuga es dona per trobada quan el dron hi és a menys de 7,5 m en horitzontal i **a la mateixa alçada** (`cfg.dron.toleranciaAlcada = 0`; es pot permetre una diferència d'alçada posant-hi, per exemple, 5 m).
 - **Ploma gaussiana 3D:** la mateixa fórmula de Pasquill-Gifford, però ara el dron la mesura a l'alçada on vola. El terme de reflexió fa que el contaminant que toca el terra hi "reboti".
 - **Ploma complexa 3D:** els *puffs* són núvols gaussians 3D que:
   - es dispersen més en horitzontal que en vertical (l'atmosfera barreja menys en vertical);
@@ -224,14 +224,16 @@ L'infotaxis és més ràpid i més fiable, sobretot amb la ploma complexa, on el
 - **Al mig a la dreta:** el que sap el dron vist de costat (x-z). Aquí es veu com dedueix l'alçada de la fuga.
 - **A baix a la dreta:** la distància a la font, l'alçada del dron i l'entropia o els comptes.
 
-**Resultats típics (3D, 3 realitzacions):**
+**Resultats típics (3D, escenari fix, 3 realitzacions; en tots els èxits el dron acaba a l'alçada exacta de la fuga):**
 
 | Ploma | Algorisme | Èxit | Temps de cerca |
 |---|---|---|---|
-| gaussiana | infotaxis | 3/3 | 180 – 200 s |
+| gaussiana | infotaxis | 3/3 | 170 – 210 s |
 | gaussiana | gradient | 3/3 | 500 – 880 s |
-| complexa | infotaxis | 3/3 | 335 – 420 s |
+| complexa | infotaxis | 3/3 | 205 – 355 s |
 | complexa | gradient | 2/3 | 1530 – 2300 s (o no la troba) |
+
+Amb 12 escenaris aleatoris per ploma, l'infotaxis 3D troba la fuga, a la seva alçada, en tots 24.
 
 L'infotaxis 3D és més costós de calcular que el 2D (unes 44.000 cel·les en lloc de 5.000). Si l'animació va lenta, puja `cfg.visual.cadaNPassos`. `comparativa_montecarlo_3d.m` fa l'estadística en 3D.
 

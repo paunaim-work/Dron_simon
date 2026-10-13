@@ -28,7 +28,8 @@ cfg.font.pos          = [60 150 10];    % fuga a 10 m d'alcada (el dron NO ho sa
 cfg.dron.posInicial   = [340 215 30];   % el dron surt a 30 m d'alcada
 cfg.dron.velocitat    = 5;              % m/s  -> dt = dx / velocitat
 cfg.dron.maxPassos    = 2500;
-cfg.dron.radiDeteccio = [];             % m; [] = 1.5*dx
+cfg.dron.radiDeteccio = [];             % distancia horitzontal per trobar la fuga (m); [] = 1.5*dx
+cfg.dron.toleranciaAlcada = 0;          % diferencia d'alcada admesa (m); 0 = ha d'arribar a la mateixa alcada
 
 % =====================================================================
 %  VENT MITJA

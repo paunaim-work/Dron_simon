@@ -45,7 +45,7 @@ hist.mode = zeros(N + 1, 1);
 n = 1;
 hist.pos(n, :) = cella_a_posicio_3d(pos, dom);
 hist.dist(n)   = norm(hist.pos(n, :) - posFont);
-trobada = hist.dist(n) <= dom.radiDet + 1e-9;
+trobada = font_trobada_3d(hist.pos(n, :), posFont, dom);
 if ~trobada
     [hist, cerc] = mesurar_i_aprendre(alg, cerc, pl, pos, cfg, dom, hist, n);
 end
@@ -75,7 +75,7 @@ for t = 1:N
     hist.pos(n, :) = cella_a_posicio_3d(pos, dom);
     hist.dist(n)   = norm(hist.pos(n, :) - posFont);
 
-    if hist.dist(n) <= dom.radiDet + 1e-9
+    if font_trobada_3d(hist.pos(n, :), posFont, dom)
         trobada = true;
         hist.S(n) = 0;
     else
