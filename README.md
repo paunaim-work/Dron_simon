@@ -4,6 +4,8 @@ Simulació en MATLAB d'un dron que busca l'origen d'una fuga de contaminant (qu�
 
 Projecte: *Disseny i programació d'un dron aeri autònom per a la mesura de contaminació i determinació del seu origen* (Ignasi Reichardt, 2026-2027).
 
+Hi ha dues versions independents: la **2D** (`matlab/`), on el dron vola a una alçada fixa, i la **3D** (`matlab3d/`), on la fuga pot ser a qualsevol alçada i el dron també es mou amunt i avall. Vegeu [Versió 3D](#versió-3d-matlab3d).
+
 | Ploma gaussiana + infotaxis | Ploma complexa + infotaxis |
 |---|---|
 | ![](figures/exemple_gaussiana_infotaxis.png) | ![](figures/exemple_complexa_infotaxis.png) |
@@ -36,7 +38,7 @@ També funciona amb GNU Octave (provat amb la versió 8.4). Com que Octave dibui
 ## Estructura
 
 ```
-matlab/
+matlab/                        ← VERSIÓ 2D
 ├── main_simulacio.m           ← script principal (tria ploma i algorisme)
 ├── comparativa_montecarlo.m   ← estadística de moltes cerques
 └── funcions/
@@ -47,6 +49,10 @@ matlab/
     ├── infotaxis_*.m, model_taxa_deteccio.m, versemblanca.m, entropia.m
     ├── gradient_*.m
     └── visualitzacio_*.m, mapa_colors.m
+matlab3d/                      ← VERSIÓ 3D (usa algunes funcions generals de matlab/funcions)
+├── main_simulacio_3d.m        ← script principal 3D
+├── comparativa_montecarlo_3d.m
+└── funcions3d/                ← totes les funcions acaben en _3d
 ```
 
 ## Models de ploma
@@ -158,13 +164,57 @@ L'infotaxis és més ràpid i més fiable, sobretot amb la ploma complexa, on el
 | `infotaxis.factorModel` | 1 | per simular un error de calibratge del model intern |
 | `gradient.alfa` | 0.6 | filtre del gradient (0 = cap) |
 
+## Versió 3D (`matlab3d/`)
+
+| Ploma gaussiana 3D + infotaxis | Ploma complexa 3D + infotaxis |
+|---|---|
+| ![](figures/exemple3d_gaussiana_infotaxis.png) | ![](figures/exemple3d_complexa_infotaxis.png) |
+
+**Com s'executa:** obre `matlab3d/main_simulacio_3d.m` a MATLAB, tria `cfg.tipusPloma` i `cfg.algorisme` a les línies 29-30 i prem F5. Aquesta versió fa servir algunes funcions generals de la 2D (llei de Poisson, entropia, coeficients de Briggs, colors), per això les carpetes `matlab` i `matlab3d` han d'estar l'una al costat de l'altra, tal com són al repositori. La versió 2D no s'ha modificat.
+
+**Què canvia respecte de la 2D:**
+
+- **Domini:** volum de 400 × 300 × 40 m amb cel·les de 5 m. La fuga és per defecte a 10 m d'alçada (`cfg.font.pos = [60 150 10]`) i el dron surt a 30 m. El dron pot fer 7 accions: quedar-se quiet, ±x, ±y, pujar o baixar.
+- **Ploma gaussiana 3D:** la mateixa fórmula de Pasquill-Gifford, però ara el dron la mesura a l'alçada on vola. El terme de reflexió fa que el contaminant que toca el terra hi "reboti".
+- **Ploma complexa 3D:** els *puffs* són núvols gaussians 3D que:
+  - es dispersen més en horitzontal que en vertical (l'atmosfera barreja menys en vertical);
+  - reboten al terra;
+  - són transportats per un vent que augmenta amb l'alçada segons el **perfil potencial** $U(z)=U\,(z/z_{ref})^{p}$, la forma típica del vent a la capa límit atmosfèrica (la capa d'aire en contacte amb el terra, on el fregament frena el vent).
+- **Infotaxis 3D:** la probabilitat P(r₀) es defineix sobre tot el volum, de manera que el dron també dedueix a quina alçada és la fuga. El model intern per a la ploma complexa és la fórmula 3D de l'article (material suplementari, eq. 6) amb dues ampliacions:
+  - una difusivitat horitzontal $D_h$ i una de vertical $D_v$ diferents;
+  - una **font imatge** sota terra, el mètode clàssic per imposar que el terra no deixi passar el contaminant.
+
+  $$c(r|r_0)=\frac{Q}{4\pi\sqrt{D_hD_v}}\,e^{\frac{sV}{2D_h}}\left[\frac{e^{-r_1/\lambda}}{r_1}+\frac{e^{-r_2/\lambda}}{r_2}\right]$$
+
+  on $r_1$ i $r_2$ són les distàncies a la font i a la seva imatge, amb l'eix vertical escalat per $\sqrt{D_h/D_v}$. Com que el terra trenca la simetria vertical, el model es guarda en una taula 4D: desplaçament horitzontal, alçada del dron i alçada de la font.
+- **Gradient 3D:** el dron porta 7 sensors (centre, ±x, ±y, un a sobre i un a sota) i també estima el gradient vertical. En exploració es mou sobretot en horitzontal i canvia d'alçada de tant en tant (`cfg.gradient.probVertical`).
+
+**Què es veu a l'animació 3D:**
+
+- **Esquerra:** l'escena 3D. La ploma es dibuixa com a superfícies d'igual concentració (taronja = vora, vermell = interior). També hi ha la trajectòria del dron i la seva ombra al terra, les deteccions i la font. L'eix vertical està exagerat ×4 per poder veure les alçades. Es pot girar amb el ratolí.
+- **Dalt a la dreta:** el tall horitzontal de la ploma a l'alçada on vola el dron, i el que sap el dron vist des de dalt.
+- **Al mig a la dreta:** el que sap el dron vist de costat (x-z). Aquí es veu com dedueix l'alçada de la fuga.
+- **A baix a la dreta:** la distància a la font, l'alçada del dron i l'entropia o els comptes.
+
+**Resultats típics (3D, 3 realitzacions):**
+
+| Ploma | Algorisme | Èxit | Temps de cerca |
+|---|---|---|---|
+| gaussiana | infotaxis | 3/3 | 180 – 200 s |
+| gaussiana | gradient | 3/3 | 500 – 880 s |
+| complexa | infotaxis | 3/3 | 335 – 420 s |
+| complexa | gradient | 2/3 | 1530 – 2300 s (o no la troba) |
+
+L'infotaxis 3D és més costós de calcular que el 2D (unes 44.000 cel·les en lloc de 5.000). Si l'animació va lenta, puja `cfg.visual.cadaNPassos`. `comparativa_montecarlo_3d.m` fa l'estadística en 3D.
+
 ## Idees per continuar el projecte
 
 - Estudiar com depèn el temps de cerca de la distància inicial, de la sensibilitat del sensor o de la velocitat del dron (pla de treball de novembre i desembre).
 - Comprovar la robustesa de l'infotaxis davant d'errors en el model intern (`factorModel`, `Dmodel`, direcció del vent mal estimada).
 - Aprendre els paràmetres del medi a partir de les deteccions (secció 5 del material suplementari).
 - Tenir en compte les correlacions temporals entre deteccions (secció 6, eq. 12-13), que són importants a la ploma complexa.
-- Ampliar a 3D (alçada de vol variable) i a moviments en 8 direccions.
+- Afegir l'elevació de plomes calentes (*plume rise*), obstacles (edificis) o un sostre per inversió tèrmica a la versió 3D.
+- Permetre moviments en diagonal (8 direccions en 2D, 26 en 3D).
 
 ## Referències
 
