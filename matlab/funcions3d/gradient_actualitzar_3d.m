@@ -3,7 +3,7 @@ function gr = gradient_actualitzar_3d(gr, pos, k, dom)
 %   centrades amb els 7 sensors k = [C E O N S amunt avall] i el suavitza
 %   amb un filtre exponencial.
 
-c = max(k(:)' / dom.dt - gr.fons, 0) / gr.sensibilitat;
+c = max(k(:)' / dom.tMesura - gr.fons, 0) / gr.sensibilitat;
 gNou = [c(2) - c(3), c(4) - c(5), c(6) - c(7)] / (2 * gr.d);
 
 if sum(k) >= gr.llindar

@@ -22,6 +22,10 @@
 %        'gradient'  -> quimiotaxi classica: el dron puja pel gradient de
 %                       concentracio mesurat amb sensors en creu
 %
+%    * El mode realista (opcional): aplica les limitacions tecniques del
+%      dron de la fitxa tecnica (velocitat, temps de mesura, resposta del
+%      sensor, helices, gas, bateria, saturacio, errors del GPS i del vent)
+%
 %  Executa aquest script (F5). Tots els parametres son a
 %  funcions/configuracio_defecte.m (2D) i funcions3d/configuracio_defecte_3d.m
 %  (3D), i es poden canviar mes avall, a "ALTRES PARAMETRES".
@@ -54,6 +58,27 @@ mostrarAnimacio = true;
 cadaNPassos     = 1;        % redibuixa cada N passos (puja'l si va lent; en 3D prova 3)
 gravarVideo     = false;    % true -> desa un video a la carpeta matlab/videos
 formatVideo     = 'mp4';    % 'mp4', 'avi' o 'gif'
+
+%% ============ MODE REALISTA: LIMITACIONS TECNIQUES DEL DRON ============
+% Valors de la fitxa tecnica del Dron Simon. modeRealista es l'interruptor
+% general (false = simulacio ideal). Cada limitacio es pot activar o
+% desactivar (true/false) i regular. Explicacio detallada de cada
+% parametre: funcions/configuracio_realista.m
+modeRealista = false;
+R = configuracio_realista();
+R.velocitat.activat      = true;   R.velocitat.valor    = 2;        % m/s durant la cerca
+R.tempsMesura.activat    = true;   R.tempsMesura.valor  = 8;        % s aturat a cada punt mesurant
+R.respostaSensor.activat = true;   R.respostaSensor.T90 = 8;        % s: temps de resposta del PID
+R.helices.activat        = true;   R.helices.dilucio    = 0.10;     % fraccio d'aire net que hi barreja el corrent
+                                   R.helices.soroll     = 0.20;     % variabilitat relativa de la mesura
+R.gas.activat            = true;   R.gas.nom            = 'benze';  % 'heli', 'meta', 'benze', 'propa' o 'co2'
+                                   R.gas.tempsDilucio   = 2;        % s que el gas puja/baixa abans de barrejar-se
+R.bateria.activat        = true;   R.bateria.energia    = 389;      % Wh
+                                   R.bateria.potencia   = 390;      % W en vol estacionari
+                                   R.bateria.retornBase = true;     % guarda energia per tornar a la base
+R.saturacio.activat      = true;   R.saturacio.valor    = 100;      % ppm: rang del sensor
+R.errorGPS.activat       = true;   R.errorGPS.valor     = 1.5;      % m
+R.errorVent.activat      = true;   R.errorVent.valor    = 3;        % graus: error de direccio de l'anemometre
 %% =================================================================
 
 if preguntarOpcions
@@ -65,6 +90,8 @@ if preguntarOpcions
     if isequal(op, 2), algorisme = 'gradient'; else, algorisme = 'infotaxis'; end
     op = input('Escenari: 1 = aleatori, 2 = fix  [1]: ');
     escenariAleatori = ~isequal(op, 2);
+    op = input('Dron: 1 = ideal, 2 = realista (limitacions tecniques)  [1]: ');
+    modeRealista = isequal(op, 2);
 end
 
 switch lower(dimensio)
@@ -85,6 +112,8 @@ cfg.visual.cadaNPassos  = cadaNPassos;
 cfg.visual.gravarVideo  = gravarVideo;
 cfg.visual.formatVideo  = formatVideo;
 cfg.visual.carpetaVideo = fullfile(carpeta, 'videos');
+R.activat               = modeRealista;
+cfg.realista            = R;
 
 %% ===================== ALTRES PARAMETRES (opcional) =====================
 % Treu el % del davant per canviar-los. Les posicions son [x y] en 2D i
@@ -105,6 +134,9 @@ cfg.visual.carpetaVideo = fullfile(carpeta, 'videos');
 %% =========================================================================
 
 fprintf('Simulacio %s | Ploma: %s | Algorisme: %s\n', upper(dimensio), cfg.tipusPloma, cfg.algorisme);
+if modeRealista
+    fprintf('(mode realista: el temps de cerca inclou els temps d''espera per mesurar)\n');
+end
 if strcmpi(dimensio, '3d')
     res = simular_cerca_3d(cfg);
 else
@@ -113,17 +145,25 @@ end
 
 %% Resum
 fprintf('\n=============== RESULTAT ===============\n');
-if res.trobada
-    fprintf('Font TROBADA a [%s] m (dron a [%s] m)\n', strtrim(sprintf('%.0f ', res.cfg.font.pos)), ...
-            strtrim(sprintf('%.0f ', res.hist.pos(end, :))));
-else
-    fprintf('Font NO trobada (limit de %d passos)\n', cfg.dron.maxPassos);
+switch res.motiu
+    case 'trobada'
+        fprintf('Font TROBADA a [%s] m (dron a [%s] m)\n', strtrim(sprintf('%.0f ', res.cfg.font.pos)), ...
+                strtrim(sprintf('%.0f ', res.hist.pos(end, :))));
+    case 'bateria'
+        fprintf('Font NO trobada: BATERIA BAIXA, el dron torna a la base\n');
+    case 'finestra'
+        fprintf('Simulacio aturada (finestra tancada)\n');
+    otherwise
+        fprintf('Font NO trobada (limit de %d passos)\n', cfg.dron.maxPassos);
 end
 fprintf('Temps de cerca:       %8.0f s (%.1f min)\n', res.temps, res.temps / 60);
 fprintf('Passos:               %8d\n', res.passos);
 fprintf('Distancia recorreguda:%8.0f m\n', res.recorregut);
 fprintf('Distancia inicial:    %8.0f m\n', res.hist.dist(1));
 fprintf('Deteccions:           %8d\n', res.deteccions);
+if ~isnan(res.bateria)
+    fprintf('Bateria restant:      %8.0f %%\n', res.bateria);
+end
 fprintf('========================================\n');
 if cfg.atzar.activat
     fprintf('Per repetir exactament aquesta prova:\n   llavorEscenari = %d;  llavor = %d;\n', ...

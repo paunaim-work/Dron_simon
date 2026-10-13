@@ -20,7 +20,7 @@ gr.fons         = cfg.sensor.fons;
 
 % Llindar de deteccio: minim de comptes (sumant els 5 sensors) perque
 % la probabilitat de falsa alarma pel fons sigui < 1 %
-lamFons = size(gr.offsets, 1) * cfg.sensor.fons * dom.dt;
+lamFons = size(gr.offsets, 1) * cfg.sensor.fons * dom.tMesura;
 gr.llindar = 1;
 while 1 - sum(exp(-lamFons) * lamFons.^(0:gr.llindar - 1) ./ factorial(0:gr.llindar - 1)) > 0.01
     gr.llindar = gr.llindar + 1;

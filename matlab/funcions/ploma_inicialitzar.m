@@ -37,6 +37,7 @@ pl.p.z           = g.z;
 pl.p.estabilitat = g.estabilitat;
 pl.p.theta       = dom.theta;
 pl.p.sigma0      = g.sigma0;
+pl.p.flot        = flotacio_cfg(cfg);   % densitat del gas (mode realista)
 % El camp es estacionari: es calcula un sol cop per dibuixar-lo
 pl.campVisual = ploma_gaussiana_conc(dom.Xv - pl.font(1), dom.Yv - pl.font(2), pl.p);
 end
@@ -51,8 +52,10 @@ pl.U      = c.U;
 pl.theta0 = dom.theta;
 
 % Emissio
-pl.nPerPas   = max(1, round(c.puffsPerSeg * dom.dt));
-pl.massaPuff = c.Q * dom.dt / pl.nPerPas;
+pl.Q           = c.Q;
+pl.puffsPerSeg = c.puffsPerSeg;
+pl.nPerPas     = max(1, round(c.puffsPerSeg * dom.dt));
+pl.massaPuff   = c.Q * dom.dt / pl.nPerPas;     % referencia per eliminar puffs esvaits
 pl.sigma0    = c.sigma0;
 pl.Dpuff     = c.Dpuff;
 pl.Dturb     = c.Dturb;
@@ -84,6 +87,13 @@ pl.px  = zeros(0, 1);
 pl.py  = zeros(0, 1);
 pl.ps2 = zeros(0, 1);   % sigma^2 de cada puff
 pl.pm  = zeros(0, 1);   % massa de cada puff
+pl.page = zeros(0, 1);  % edat de cada puff (s)
+
+% Densitat del gas (mode realista): la ploma puja o baixa respecte de
+% l'alcada de vol, que en 2D es la de la fuga (cfg.gauss.H)
+pl.flot  = flotacio_cfg(cfg);
+pl.Hflot = cfg.gauss.H;
+pl.Dv    = c.Dpuff + c.Dturb;
 
 marge = 60;
 pl.lim = [dom.x(1) - marge, dom.x(end) + marge, dom.y(1) - marge, dom.y(end) + marge];

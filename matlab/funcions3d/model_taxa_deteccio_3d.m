@@ -23,11 +23,14 @@ function [K, info] = model_taxa_deteccio_3d(cfg, dom)
 K = zeros(2 * dom.Ny - 1, 2 * dom.Nx - 1, dom.Nz, dom.Nz);
 info = struct();
 
+theta = angle_vent_model(cfg, dom);     % en mode realista, amb l'error de l'anemometre
+flot  = flotacio_cfg(cfg);              % densitat del gas (el dron sap quin gas busca)
+
 switch lower(cfg.tipusPloma)
     case 'gaussiana'
         g = cfg.gauss;
         p.Q = g.Q; p.u = g.u; p.estabilitat = g.estabilitat;
-        p.sigma0 = g.sigma0; p.theta = dom.theta;
+        p.sigma0 = g.sigma0; p.theta = theta; p.flot = flot;
         for iz = 1:dom.Nz
             for iz0 = 1:dom.Nz
                 c = ploma_gaussiana_conc_3d(DX, DY, dom.z(iz), dom.z(iz0), p);
@@ -53,13 +56,16 @@ switch lower(cfg.tipusPloma)
         tau = cc.tau;
         lam = sqrt(Dh * tau / (1 + V^2 * tau / (4 * Dh)));
         a   = sqrt(Dh / Dv);                      % escalat vertical
-        s   = DX * cos(dom.theta) + DY * sin(dom.theta);
+        s   = DX * cos(theta) + DY * sin(theta);
         rh2 = DX.^2 + DY.^2;
         rmin = dom.dx / 2;
+        % Densitat del gas: la ploma puja o baixa amb la distancia a sotavent
+        dhS = desplacament_flotacio(max(s, 0) / V, flot);
         for iz = 1:dom.Nz
             for iz0 = 1:dom.Nz
-                r1 = max(sqrt(rh2 + (a * (dom.z(iz) - dom.z(iz0)))^2), rmin);
-                r2 = max(sqrt(rh2 + (a * (dom.z(iz) + dom.z(iz0)))^2), rmin);
+                z0e = max(dom.z(iz0) + dhS, 0);
+                r1 = max(sqrt(rh2 + (a * (dom.z(iz) - z0e)).^2), rmin);
+                r2 = max(sqrt(rh2 + (a * (dom.z(iz) + z0e)).^2), rmin);
                 c = cc.Q / (4 * pi * sqrt(Dh * Dv)) * ...
                     (exp(s * V / (2 * Dh) - r1 / lam) ./ r1 + exp(s * V / (2 * Dh) - r2 / lam) ./ r2);
                 K(:, :, iz, iz0) = c;
@@ -74,5 +80,8 @@ switch lower(cfg.tipusPloma)
         error('Tipus de ploma desconegut: %s', cfg.tipusPloma);
 end
 
-K = dom.dt * (cfg.infotaxis.factorModel * cfg.sensor.sensibilitat * K + cfg.sensor.fons);
+% Limitacions del sensor que el dron coneix (dilucio mitjana, saturacio)
+K = model_sensor_realista(K, cfg);
+% Comptes esperats durant la finestra de mesura
+K = dom.tMesura * (cfg.infotaxis.factorModel * cfg.sensor.sensibilitat * K + cfg.sensor.fons);
 end

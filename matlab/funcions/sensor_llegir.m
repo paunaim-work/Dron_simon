@@ -12,6 +12,6 @@ function [k, c] = sensor_llegir(pl, punts, cfg, dom)
 %       k ~ Poisson( mu ),   mu = dt * (sensibilitat * c + fons)
 
 c  = ploma_concentracio(pl, punts(:, 1), punts(:, 2));
-mu = dom.dt * (cfg.sensor.sensibilitat * c + cfg.sensor.fons);
+mu = dom.tMesura * (cfg.sensor.sensibilitat * c + cfg.sensor.fons);
 k  = poisson_aleatori(mu);
 end

@@ -22,6 +22,7 @@ nRepeticions     = 20;                         % cerques per combinacio (en 3D p
 plomes           = {'gaussiana', 'complexa'};
 algorismes       = {'infotaxis', 'gradient'};
 escenarisAleatoris = true;  % false: sempre l'escenari fix del fitxer de configuracio
+modeRealista       = false; % true: limitacions tecniques del dron (funcions/configuracio_realista.m)
 %% ===========================================================
 
 switch lower(dimensio)
@@ -52,12 +53,14 @@ for ip = 1:nP
             cfg.atzar.activat = escenarisAleatoris;
             cfg.atzar.llavor  = r;          % escenari r (igual per a tots els algorismes)
             cfg.atzar.mostrar = false;
+            cfg.realista.activat = modeRealista;
+            cfg.realista.mostrar = false;
             res = simular(cfg);
             if res.trobada
                 tt(r) = res.temps;
             end
-            fprintf('%-9s %-9s  %2d/%2d  trobada = %d  t = %5.0f s\n', plomes{ip}, ...
-                    algorismes{ia}, r, nRepeticions, res.trobada, res.temps);
+            fprintf('%-9s %-9s  %2d/%2d  %-8s  t = %5.0f s\n', plomes{ip}, ...
+                    algorismes{ia}, r, nRepeticions, res.motiu, res.temps);
         end
         taxaExit(ip, ia)  = mean(~isnan(tt));
         temps{ip, ia} = tt;
@@ -65,7 +68,12 @@ for ip = 1:nP
 end
 
 %% Taula de resultats
-fprintf('\nResultats %s (%d repeticions)\n', upper(dimensio), nRepeticions);
+if modeRealista
+    txtMode = ', mode realista';
+else
+    txtMode = '';
+end
+fprintf('\nResultats %s%s (%d repeticions)\n', upper(dimensio), txtMode, nRepeticions);
 fprintf('%-10s %-10s %8s %12s %12s\n', 'Ploma', 'Algorisme', 'Exit(%)', 'T mitja (s)', 'T mediana(s)');
 for ip = 1:nP
     for ia = 1:nA

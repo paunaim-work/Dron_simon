@@ -22,10 +22,16 @@ m = s > -p.sigma0;
 if ~any(m(:))
     return;
 end
-[sy, sz] = sigma_briggs(max(s(m), 0), p.estabilitat);
+sm = max(s(m), 0);
+[sy, sz] = sigma_briggs(sm, p.estabilitat);
 sy = sqrt(sy.^2 + p.sigma0^2);
 sz = sqrt(sz.^2 + p.sigma0^2);
 
-vertical = exp(-(z(m) - H(m)).^2 ./ (2 * sz.^2)) + exp(-(z(m) + H(m)).^2 ./ (2 * sz.^2));
+Hm = H(m);
+if isfield(p, 'flot') && ~isempty(p.flot)
+    % Densitat del gas (mode realista): la ploma puja o baixa amb la distancia
+    Hm = max(Hm + desplacament_flotacio(sm / p.u, p.flot), 0);
+end
+vertical = exp(-(z(m) - Hm).^2 ./ (2 * sz.^2)) + exp(-(z(m) + Hm).^2 ./ (2 * sz.^2));
 c(m) = p.Q ./ (2 * pi * p.u * sy .* sz) .* exp(-n(m).^2 ./ (2 * sy.^2)) .* vertical;
 end

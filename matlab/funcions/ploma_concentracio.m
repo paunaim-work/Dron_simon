@@ -10,7 +10,8 @@ switch pl.tipus
             return;
         end
         % Suma de puffs gaussians 2D: m / (2 pi s^2) exp(-d^2 / (2 s^2))
-        w  = pl.pm ./ (2 * pi * pl.ps2);
+        w  = pl.pm ./ (2 * pi * pl.ps2) .* atenuacio_flotacio(pl.page, pl.flot, pl.Hflot, ...
+                                                          pl.sigma0^2 + 2 * pl.Dv * pl.page);
         d2 = (x(:) - pl.px').^2 + (y(:) - pl.py').^2;
         c  = reshape(exp(-d2 ./ (2 * pl.ps2')) * w, size(x));
 end

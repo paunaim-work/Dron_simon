@@ -121,6 +121,12 @@ cfg.gradient.persistencia = 0.85;
 cfg.gradient.probVertical = 0.15;  % en exploracio, prob. de triar un moviment vertical
 
 % =====================================================================
+%  MODE REALISTA (limitacions tecniques del dron, fitxa tecnica)
+% =====================================================================
+% Tots els parametres i el seu significat: funcions/configuracio_realista.m
+cfg.realista = configuracio_realista();
+
+% =====================================================================
 %  VISUALITZACIO
 % =====================================================================
 cfg.visual.mostrar      = true;

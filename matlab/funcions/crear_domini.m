@@ -15,6 +15,19 @@ dom.Ny = numel(dom.y);
 % Temps que tarda el dron a creuar una cel.la (= durada d'un pas)
 dom.dt = dx / cfg.dron.velocitat;
 
+% Temps de viatge, d'espera i finestra de mesura de cada pas. En mode
+% ideal el dron mesura mentre es mou i cada pas dura dx / velocitat; en
+% mode realista pot aturar-se a mesurar (vegeu preparar_realista.m).
+dom.tViatge = dom.dt;
+dom.tEspera = 0;
+dom.tMesura = dom.dt;
+if isfield(cfg, 'realista') && cfg.realista.activat
+    dom.dt      = cfg.realista.der.tPas;
+    dom.tViatge = cfg.realista.der.tViatge;
+    dom.tEspera = cfg.realista.der.tEspera;
+    dom.tMesura = cfg.realista.der.tMesura;
+end
+
 % Direccio del vent mitja (radians) i vector unitari
 dom.theta  = cfg.vent.direccio * pi / 180;
 dom.uvent  = [cos(dom.theta) sin(dom.theta)];

@@ -17,6 +17,18 @@ dom.Nz = numel(dom.z);
 % Temps per pas (el dron avanca una cel.la, horitzontal o vertical)
 dom.dt = dx / cfg.dron.velocitat;
 
+% Temps de viatge, d'espera i finestra de mesura de cada pas (vegeu
+% crear_domini.m i preparar_realista.m)
+dom.tViatge = dom.dt;
+dom.tEspera = 0;
+dom.tMesura = dom.dt;
+if isfield(cfg, 'realista') && cfg.realista.activat
+    dom.dt      = cfg.realista.der.tPas;
+    dom.tViatge = cfg.realista.der.tViatge;
+    dom.tEspera = cfg.realista.der.tEspera;
+    dom.tMesura = cfg.realista.der.tMesura;
+end
+
 dom.theta = cfg.vent.direccio * pi / 180;
 
 % Graelles de visualitzacio: tall horitzontal fi i volum 3D

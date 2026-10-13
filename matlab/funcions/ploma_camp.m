@@ -10,7 +10,8 @@ switch pl.tipus
             return;
         end
         % Cada puff es separable en x i y: C = Ey * diag(w) * Ex
-        w  = pl.pm ./ (2 * pi * pl.ps2);
+        w  = pl.pm ./ (2 * pi * pl.ps2) .* atenuacio_flotacio(pl.page, pl.flot, pl.Hflot, ...
+                                                          pl.sigma0^2 + 2 * pl.Dv * pl.page);
         Ey = exp(-(dom.yv(:) - pl.py').^2 ./ (2 * pl.ps2'));   % Ny x Np
         Ex = exp(-(pl.px - dom.xv).^2 ./ (2 * pl.ps2));        % Np x Nx
         C  = (Ey .* w') * Ex;

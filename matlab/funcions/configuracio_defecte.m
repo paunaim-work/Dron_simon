@@ -127,6 +127,12 @@ cfg.gradient.memoria      = 8;     % passos sense deteccio abans de passar a exp
 cfg.gradient.persistencia = 0.85;  % probabilitat de mantenir la direccio en exploracio
 
 % =====================================================================
+%  MODE REALISTA (limitacions tecniques del dron, fitxa tecnica)
+% =====================================================================
+% Tots els parametres i el seu significat: configuracio_realista.m
+cfg.realista = configuracio_realista();
+
+% =====================================================================
 %  VISUALITZACIO
 % =====================================================================
 cfg.visual.mostrar      = true;    % animacio en directe

@@ -10,13 +10,14 @@ function vis = visualitzacio_inicialitzar(cfg, dom, pl, cerc, posFont, hist, n, 
 
 vis.tancada = false;
 vis.alg = alg;
+vis.motiu = '';
 vis.fig = figure('Name', 'Cerca de l''origen d''una fuga amb un dron', ...
                  'NumberTitle', 'off', 'Color', 'w', 'Units', 'normalized', ...
                  'Position', [0.03 0.07 0.94 0.85]);
 
 % Limits de color de la concentracio (escala logaritmica):
 % de 0.02 a 100 comptes esperats per pas
-kc = cfg.sensor.sensibilitat * dom.dt;
+kc = cfg.sensor.sensibilitat * dom.tMesura;
 vis.cmin = 0.02 / kc;
 vis.clim = log10([vis.cmin 100 / kc]);
 vis.longFletxa = 0.08 * max(dom.x(end), dom.y(end));

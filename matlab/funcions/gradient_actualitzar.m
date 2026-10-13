@@ -9,7 +9,7 @@ function gr = gradient_actualitzar(gr, pos, k, dom)
 %   gradient es suavitza amb un filtre exponencial (mitjana mobil):
 %   g <- alfa g + (1 - alfa) g_nou, per reduir el soroll de recompte.
 
-c = max(k(:)' / dom.dt - gr.fons, 0) / gr.sensibilitat;
+c = max(k(:)' / dom.tMesura - gr.fons, 0) / gr.sensibilitat;
 gNou = [(c(2) - c(3)) / (2 * gr.d), (c(4) - c(5)) / (2 * gr.d)];
 
 if sum(k) >= gr.llindar

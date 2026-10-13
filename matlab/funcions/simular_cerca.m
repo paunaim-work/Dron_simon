@@ -14,6 +14,10 @@ function res = simular_cerca(cfg)
 %   (3) es mou a una cel.la veina (o es queda quiet), (4) si es a menys
 %   del radi de deteccio de la font la cerca acaba; si no, (5) mesura i
 %   actualitza el que sap.
+%
+%   En mode realista (cfg.realista.activat) la ploma evoluciona durant el
+%   pas mentre el dron es desplaca i s'atura a mesurar (pas_realista.m), i
+%   la bateria pot obligar a acabar la missio (res.motiu = 'bateria').
 
 % Condicions inicials aleatories (si cfg.atzar.activat)
 cfg = aplicar_escenari_aleatori(cfg);
@@ -24,6 +28,8 @@ if isempty(cfg.llavor)
     cfg.llavor = mod(floor(now * 1e7) + 7919, 2^31 - 1);
 end
 fixar_llavor(cfg.llavor);
+cfg = preparar_realista(cfg);           % limitacions tecniques (si s'activen)
+realista = isfield(cfg, 'realista') && cfg.realista.activat;
 dom = crear_domini(cfg);
 alg = lower(cfg.algorisme);
 
@@ -52,13 +58,18 @@ hist.det  = false(N + 1, 1); % hi ha hagut deteccio?
 hist.dist = nan(N + 1, 1);   % distancia a la font (m)
 hist.S    = nan(N + 1, 1);   % entropia (infotaxis)
 hist.mode = zeros(N + 1, 1); % 1 = seguiment, 0 = exploracio (gradient)
+hist.bateria = nan(N + 1, 1);  % bateria que queda (%) (mode realista)
 
 n = 1;
 hist.pos(n, :) = cella_a_posicio(pos, dom);
 hist.dist(n)   = norm(hist.pos(n, :) - posFont);
+sens  = [];                     % estat del sensor (mode realista)
+bat   = bateria_inicialitzar(cfg, hist.pos(1, :));
+motiu = '';
 trobada = hist.dist(n) <= dom.radiDet + 1e-9;
 if ~trobada
-    [hist, cerc] = mesurar_i_aprendre(alg, cerc, pl, pos, cfg, dom, hist, n);
+    [hist, cerc, pl, sens] = mesurar_i_aprendre(alg, cerc, pl, pos, pos, sens, realista, cfg, dom, hist, n);
+    [bat, ~, hist.bateria(n)] = bateria_actualitzar(bat, [0 0], hist.pos(n, :), dom);
 end
 
 vis = [];
@@ -73,7 +84,9 @@ for t = 1:N
     if trobada
         break;
     end
-    pl = ploma_avancar(pl, dom.dt);
+    if ~realista
+        pl = ploma_avancar(pl, dom.dt);   % (en mode realista avanca dins de pas_realista)
+    end
 
     switch alg
         case 'infotaxis'
@@ -81,6 +94,7 @@ for t = 1:N
         case 'gradient'
             [mov, cerc] = gradient_decidir(cerc, pos, dom);
     end
+    posAnt = pos;
     pos = pos + mov;
 
     n = n + 1;
@@ -91,19 +105,36 @@ for t = 1:N
         trobada = true;
         hist.S(n) = 0;
     else
-        [hist, cerc] = mesurar_i_aprendre(alg, cerc, pl, pos, cfg, dom, hist, n);
+        [hist, cerc, pl, sens] = mesurar_i_aprendre(alg, cerc, pl, posAnt, pos, sens, realista, cfg, dom, hist, n);
     end
 
-    if ~isempty(vis) && (trobada || mod(t, cfg.visual.cadaNPassos) == 0)
+    % Bateria: si no arriba per continuar i tornar a la base, s'acaba
+    [bat, calTornar, hist.bateria(n)] = bateria_actualitzar(bat, mov, hist.pos(n, :), dom);
+    if ~trobada && calTornar
+        motiu = 'bateria';
+    end
+
+    if ~isempty(vis) && (trobada || ~isempty(motiu) || mod(t, cfg.visual.cadaNPassos) == 0)
+        vis.motiu = motiu;
         vis = visualitzacio_actualitzar(vis, cfg, dom, pl, cerc, posFont, hist, n, alg, trobada, false);
         if vis.tancada
             fprintf('Finestra tancada: simulacio aturada.\n');
+            motiu = 'finestra';
             break;
         end
     end
+    if ~isempty(motiu)
+        break;
+    end
+end
+if trobada
+    motiu = 'trobada';
+elseif isempty(motiu)
+    motiu = 'limit';
 end
 
 if ~isempty(vis)
+    vis.motiu = motiu;
     if ~vis.tancada
         vis = visualitzacio_actualitzar(vis, cfg, dom, pl, cerc, posFont, hist, n, alg, trobada, true);
     end
@@ -116,6 +147,8 @@ for i = 1:numel(camps)
     hist.(camps{i}) = hist.(camps{i})(1:n, :);
 end
 res.trobada    = trobada;
+res.motiu      = motiu;          % 'trobada', 'bateria', 'limit' o 'finestra'
+res.bateria    = hist.bateria(n);
 res.passos     = n - 1;
 res.temps      = (n - 1) * dom.dt;
 res.recorregut = sum(sqrt(sum(diff(hist.pos, 1, 1).^2, 2)));
@@ -127,17 +160,27 @@ res.cercador   = cerc;
 end
 
 % ---------------------------------------------------------------------
-function [hist, cerc] = mesurar_i_aprendre(alg, cerc, pl, pos, cfg, dom, hist, n)
+function [hist, cerc, pl, sens] = mesurar_i_aprendre(alg, cerc, pl, posAnt, pos, sens, realista, cfg, dom, hist, n)
 p = cella_a_posicio(pos, dom);
+if strcmp(alg, 'gradient')
+    offsets = cerc.offsets;
+else
+    offsets = [0 0];
+end
+if realista
+    fConc = @(pl, P) ploma_concentracio(pl, P(:, 1), P(:, 2));
+    [k, pl, sens] = pas_realista(pl, cella_a_posicio(posAnt, dom), p, offsets, sens, cfg, dom, ...
+                                 @ploma_avancar, fConc);
+else
+    k = sensor_llegir(pl, p + offsets, cfg, dom);
+end
 switch alg
     case 'infotaxis'
-        k = sensor_llegir(pl, p, cfg, dom);
         cerc = infotaxis_actualitzar(cerc, pos, k, dom);
         hist.k(n)   = k;
         hist.det(n) = k > 0;
         hist.S(n)   = cerc.S;
     case 'gradient'
-        k = sensor_llegir(pl, p + cerc.offsets, cfg, dom);
         cerc = gradient_actualitzar(cerc, pos, k, dom);
         hist.k(n)    = sum(k);
         hist.det(n)  = sum(k) >= cerc.llindar;

@@ -27,16 +27,18 @@ if ~isempty(pl.px)
     pl.py  = pl.py + v * dt + sd * randn(size(pl.py));
     pl.ps2 = pl.ps2 + 2 * pl.Dpuff * dt;      % el puff s'eixampla
     pl.pm  = pl.pm * exp(-dt / pl.tau);       % temps de vida finit
+    pl.page = pl.page + dt;                   % edat del puff
 end
 
 % --- 3. Emissio de nous puffs (repartits al llarg del pas) ---
-n = pl.nPerPas;
+n = max(1, round(pl.puffsPerSeg * dt));
 f = rand(n, 1);                                % fraccio del pas ja viatjada
 [u0, v0] = ploma_vent(pl, pl.font(1), pl.font(2));
 pl.px  = [pl.px;  pl.font(1) + u0 * f * dt];
 pl.py  = [pl.py;  pl.font(2) + v0 * f * dt];
 pl.ps2 = [pl.ps2; pl.sigma0^2 + 2 * pl.Dpuff * f * dt];
-pl.pm  = [pl.pm;  pl.massaPuff * ones(n, 1)];
+pl.pm  = [pl.pm;  pl.Q * dt / n * ones(n, 1)];
+pl.page = [pl.page; f * dt];
 
 % --- 4. Eliminem els puffs que surten del domini o s'han esvait ---
 fora = pl.px < pl.lim(1) | pl.px > pl.lim(2) | pl.py < pl.lim(3) | pl.py > pl.lim(4) ...
@@ -45,4 +47,5 @@ pl.px(fora) = [];
 pl.py(fora) = [];
 pl.ps2(fora) = [];
 pl.pm(fora) = [];
+pl.page(fora) = [];
 end

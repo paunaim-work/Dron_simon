@@ -28,6 +28,7 @@ pl.p.u           = g.u;
 pl.p.estabilitat = g.estabilitat;
 pl.p.sigma0      = g.sigma0;
 pl.p.theta       = dom.theta;
+pl.p.flot        = flotacio_cfg(cfg);   % densitat del gas (mode realista)
 % Camp estacionari: es calcula un sol cop per dibuixar-lo en 3D
 pl.camp3d = ploma_gaussiana_conc_3d(dom.X3 - pl.font(1), dom.Y3 - pl.font(2), ...
                                     dom.Z3, pl.font(3), pl.p);
@@ -44,8 +45,10 @@ pl.zRef   = c.zRef;
 pl.pPerfil = c.exponentPerfil;
 pl.theta0 = dom.theta;
 
-pl.nPerPas   = max(1, round(c.puffsPerSeg * dom.dt));
-pl.massaPuff = c.Q * dom.dt / pl.nPerPas;
+pl.Q           = c.Q;
+pl.puffsPerSeg = c.puffsPerSeg;
+pl.nPerPas     = max(1, round(c.puffsPerSeg * dom.dt));
+pl.massaPuff   = c.Q * dom.dt / pl.nPerPas;     % referencia per eliminar puffs esvaits
 pl.sigma0    = c.sigma0;
 pl.DpuffH    = c.DpuffH;
 pl.DpuffV    = c.DpuffV;
@@ -79,6 +82,8 @@ pl.pz   = zeros(0, 1);
 pl.ps2h = zeros(0, 1);
 pl.ps2v = zeros(0, 1);
 pl.pm   = zeros(0, 1);
+pl.page = zeros(0, 1);       % edat de cada puff (s)
+pl.flot = flotacio_cfg(cfg); % densitat del gas (mode realista)
 
 marge = 60;
 pl.lim = [dom.x(1) - marge, dom.x(end) + marge, dom.y(1) - marge, dom.y(end) + marge, ...

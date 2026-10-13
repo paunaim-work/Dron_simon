@@ -23,14 +23,17 @@ function [K, info] = model_taxa_deteccio(cfg, dom)
 [DX, DY] = meshgrid((-(dom.Nx - 1):(dom.Nx - 1)) * dom.dx, ...
                     (-(dom.Ny - 1):(dom.Ny - 1)) * dom.dx);
 info = struct();
+theta = angle_vent_model(cfg, dom);     % en mode realista, amb l'error de l'anemometre
+flot  = flotacio_cfg(cfg);              % densitat del gas (el dron sap quin gas busca)
 
 switch lower(cfg.tipusPloma)
     case 'gaussiana'
         g = cfg.gauss;
         p.Q = g.Q; p.u = g.u; p.H = g.H; p.z = g.z;
         p.estabilitat = g.estabilitat;
-        p.theta = dom.theta;
+        p.theta = theta;
         p.sigma0 = g.sigma0;
+        p.flot = flot;
         c = ploma_gaussiana_conc(DX, DY, p);
         info.descripcio = 'gaussiana (model exacte)';
 
@@ -48,10 +51,13 @@ switch lower(cfg.tipusPloma)
         V   = cc.U;
         tau = cc.tau;
         lam = sqrt(D * tau / (1 + V^2 * tau / (4 * D)));
-        s   = DX * cos(dom.theta) + DY * sin(dom.theta);
+        s   = DX * cos(theta) + DY * sin(theta);
         d   = max(hypot(DX, DY), dom.dx / 2);
         % besselk(0, x, 1) = K0(x) exp(x): evita desbordaments numerics
         c = cc.Q / (2 * pi * D) * exp(s * V / (2 * D) - d / lam) .* besselk(0, d / lam, 1);
+        % Densitat del gas: part de la ploma surt de l'alcada de vol
+        tv = max(s, 0) / V;
+        c = c .* atenuacio_flotacio(tv, flot, cfg.gauss.H, cc.sigma0^2 + 2 * (cc.Dpuff + cc.Dturb) * tv);
         info.descripcio = sprintf('adveccio-difusio (D = %.1f m^2/s, lambda = %.1f m)', D, lam);
         info.D = D;
         info.lambda = lam;
@@ -60,5 +66,8 @@ switch lower(cfg.tipusPloma)
         error('Tipus de ploma desconegut: %s', cfg.tipusPloma);
 end
 
-K = dom.dt * (cfg.infotaxis.factorModel * cfg.sensor.sensibilitat * c + cfg.sensor.fons);
+% Limitacions del sensor que el dron coneix (dilucio mitjana, saturacio)
+c = model_sensor_realista(c, cfg);
+% Comptes esperats durant la finestra de mesura
+K = dom.tMesura * (cfg.infotaxis.factorModel * cfg.sensor.sensibilitat * c + cfg.sensor.fons);
 end

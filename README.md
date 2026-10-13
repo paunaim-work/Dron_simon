@@ -21,10 +21,11 @@ Es pot simular en **2D**, amb el dron volant a una alçada fixa, o en **3D**, on
    tipusPloma = 'gaussiana';   % 'gaussiana'  o  'complexa'
    algorisme  = 'infotaxis';   % 'infotaxis'  o  'gradient'
    escenariAleatori = true;    % false = sempre el mateix escenari
+   modeRealista = false;       % true = limitacions tècniques del dron (vegeu "Mode realista")
    ```
 3. Executa'l (F5). S'obre una finestra amb l'animació i, en acabar, surt un resum a la consola.
 
-Si poses `preguntarOpcions = true`, el programa et demana la dimensió, la ploma, l'algorisme i el tipus d'escenari per la finestra de comandes. La resta de paràmetres es poden canviar a l'apartat **ALTRES PARÀMETRES** del mateix script (hi ha exemples comentats) o als fitxers de configuració.
+Si poses `preguntarOpcions = true`, el programa et demana la dimensió, la ploma, l'algorisme, el tipus d'escenari i si vols el dron ideal o realista per la finestra de comandes. La resta de paràmetres es poden canviar a l'apartat **ALTRES PARÀMETRES** del mateix script (hi ha exemples comentats) o als fitxers de configuració.
 
 ### Escenaris aleatoris
 
@@ -237,6 +238,56 @@ L'infotaxis és més ràpid i més fiable, sobretot amb la ploma complexa, on el
 Amb 12 escenaris aleatoris per ploma, l'infotaxis 3D troba la fuga, a la seva alçada, en tots 24.
 
 L'infotaxis 3D és més costós de calcular que el 2D (unes 44.000 cel·les en lloc de 5.000). Si l'animació va lenta, puja `cadaNPassos` (per exemple a 3). Per a l'estadística en 3D, posa `dimensio = '3d'` a `comparativa_montecarlo.m`.
+
+## Mode realista (limitacions tècniques del dron)
+
+Per defecte la simulació és **ideal**: el dron es mou 5 m per segon, mesura a l'instant i no té límit de bateria. Amb `modeRealista = true` (a `main_simulacio.m` o a `comparativa_montecarlo.m`) s'hi apliquen les limitacions tècniques del dron de la **fitxa tècnica del Dron Simon**. Cadascuna té el seu interruptor (`activat = true/false`) i els seus valors, que es poden regular al bloc «MODE REALISTA» de `main_simulacio.m`. L'explicació detallada de cada paràmetre és a `funcions/configuracio_realista.m`.
+
+| Limitació | Paràmetres (valor per defecte) | D'on surt | Què fa a la simulació |
+|---|---|---|---|
+| Velocitat de cerca | `R.velocitat.valor` (2 m/s) | La fitxa recomana volar a poc a poc pel temps de resposta del PID | Cada pas de 5 m dura més |
+| Temps de mesura | `R.tempsMesura.valor` (8 s) | El dron s'atura en vol estacionari per mesurar | El dron s'espera a cada punt i acumula la mesura: més senyal i menys soroll, però més temps i més bateria |
+| Resposta del sensor | `R.respostaSensor.T90` (8 s) | MiniPID 2: T90 < 8 s | La lectura segueix la concentració real amb retard |
+| Hèlices (*downwash*) | `R.helices.dilucio` (0,10), `R.helices.soroll` (0,20) | Tub de presa de 80 cm fora del corrent de les hèlices | Barreja aire net amb la mostra i hi afegeix fluctuacions |
+| Gas | `R.gas.nom` (`'benze'`), `R.gas.tempsDilucio` (2 s), `R.gas.midaFont` (0,5 m) | Objectiu del projecte: benzè | La ploma puja o baixa segons la densitat del gas |
+| Bateria | `R.bateria.energia` (389 Wh), `R.bateria.potencia` (390 W), `R.bateria.fraccioUtil` (0,8), `R.bateria.extraMoviment` (0,10), `R.bateria.retornBase` (true) | Bateria Li-ion 6S4P i càlcul d'autonomia de la fitxa | La missió s'acaba quan l'energia que queda només arriba per tornar a la base |
+| Saturació | `R.saturacio.valor` (100 ppm) | Rang del MiniPID 2 | Les lectures no poden passar de 100 ppm |
+| Error del GPS | `R.errorGPS.valor` (1,5 m) | GPS Holybro M10 | La mesura es pren en un punt una mica diferent del que creu el dron |
+| Error de l'anemòmetre | `R.errorVent.valor` (3°) | Anemòmetre ultrasònic a bord | El model intern del dron fa servir una direcció de vent lleugerament equivocada |
+
+En mode realista la concentració s'interpreta en **ppm** (parts per milió).
+
+**Com es modela cada limitació:**
+
+- **Temps de cada pas.** Un pas dura $\Delta t = d_x/v + t_{\text{mesura}}$. Amb els valors per defecte, $5/2 + 8 = 10{,}5$ s. Mentre el dron es desplaça i mentre espera, la ploma continua evolucionant (amb un pas intern d'1 s). Els comptes del sensor s'acumulen durant l'espera; si no hi ha espera, durant el viatge.
+- **Resposta del sensor.** Es modela com un **filtre de primer ordre**: la lectura s'acosta a la concentració real exponencialment, amb una constant de temps $\tau = T_{90}/\ln 10$ (amb $T_{90} = 8$ s, $\tau \approx 3{,}5$ s). $T_{90}$ és el temps que triga a arribar al 90 % d'un canvi brusc. Si el dron no s'espera prou, la mesura encara reflecteix l'aire d'on venia.
+- **Hèlices.** La mostra es dilueix amb una fracció d'aire net, de manera que $c \to c\,(1-d)$, i es multiplica per un soroll lognormal de mitjana 1 i coeficient de variació (desviació relativa) `soroll`. Gràcies al tub de 80 cm que surt fora del corrent, l'efecte és petit; sense tub caldria posar una dilució de l'ordre de 0,5. Per comparar, la velocitat de l'aire que empenyen les hèlices en vol estacionari és $v_i = \sqrt{mg/(2\rho A)} \approx 5$ m/s.
+- **Densitat del gas** (model simplificat de flotabilitat). La **gravetat reduïda** $g' = g\,(\rho_{\text{aire}}-\rho_{\text{gas}})/\rho_{\text{aire}}$ mesura quant pesa més o menys el gas que l'aire. Dona una velocitat vertical inicial $w_0 = \pm\sqrt{|g'|\,L}$, on $L$ és la mida de la fuga, que decau a mesura que el gas es barreja amb l'aire: $w(t)=w_0\,e^{-t/\tau_g}$. Per tant, la ploma es desplaça en vertical $\Delta h(t) = w_0\,\tau_g\,(1-e^{-t/\tau_g})$: amunt els gasos lleugers, avall els pesants, i mai per sota del terra.
+
+  | Gas | Densitat (kg/m³) | Comportament |
+  |---|---|---|
+  | `'heli'` (He) | 0,17 | puja molt |
+  | `'meta'` (CH₄, gas natural) | 0,67 | puja |
+  | `'benze'` (C₆H₆, vapor) | 3,25 | baixa |
+  | `'propa'` (C₃H₈, GLP) | 1,83 | baixa |
+  | `'co2'` | 1,83 | baixa |
+
+  En 2D, el dron vola a l'alçada de la fuga: si el gas puja o baixa, a l'alçada de vol n'arriba menys. En 3D la ploma es desplaça de debò, i el dron ha de buscar-la més amunt o més avall. Amb un gas pesant, per exemple, val la pena volar més baix.
+- **Bateria.** L'autonomia en vol estacionari és $t = f\,E/P = 0{,}8 \cdot 389\ \text{Wh} / 390\ \text{W} \approx 48$ min, el mateix càlcul que la fitxa. Quan el dron es desplaça consumeix un 10 % més. Si `retornBase` està activat, la missió s'acaba quan l'energia que queda, menys la d'un pas més, ja no arriba per tornar al punt d'enlairament. Llavors la consola i el títol diuen **BATERIA BAIXA**. El títol de l'animació mostra la bateria que queda.
+- **Errors del GPS i de l'anemòmetre.** A cada pas, la mesura es pren en una posició desplaçada aleatòriament (desviació típica de 1,5 m). L'error de direcció del vent se sorteja un cop per missió i desvia el model intern del dron. La consola mostra quant val.
+
+**Què sap el dron.** El model intern de l'infotaxis coneix les limitacions que es poden calibrar: el temps de mesura, la dilució mitjana de les hèlices, la saturació i el gas que busca. No coneix ni les fluctuacions, ni el retard del sensor, ni l'error del GPS, ni el del vent: són errors de model, com en un dron real.
+
+**Resultats típics** (2D, escenari fix, totes les limitacions amb els valors per defecte, 4 llavors):
+
+| Ploma | Infotaxis | Gradient |
+|---|---|---|
+| Gaussiana | 2/4 trobades (20 – 32 min), 2/4 sense bateria | 0/4 (sense bateria) |
+| Complexa | 3/4 trobades (22 – 40 min), 1/4 sense bateria | 0/4 (sense bateria) |
+
+Amb l'autonomia del dron (~48 min) i mesures de 8 s, una cerca des de ~300 m va justa de bateria. És el tipus d'estudi que proposa el pla de treball de novembre: si el dron és adequat (velocitat, autonomia) per seguir la ploma. Prova, per exemple, d'escurçar el temps de mesura, de volar més de pressa o de canviar de gas.
+
+**Limitació del model:** l'algorisme de gradient suposa 4 sensors (6 en 3D) separats 5 m, però el dron real només en porta un (el PID). Per al Dron Simon, l'infotaxis, que funciona amb un sol sensor, és l'algorisme realista.
 
 ## Idees per continuar el projecte
 

@@ -80,9 +80,14 @@ set(vis.ax6, 'XLim', [0 tmax]);
 % --- Titol ---
 linia1 = sprintf('Ploma %s 3D  |  %s  |  t = %.0f s (pas %d)  |  dron a z = %.0f m', ...
                  cfg.tipusPloma, alg, t(end), n - 1, p(3));
+if ~isnan(hist.bateria(n))
+    linia1 = sprintf('%s  |  bateria %.0f %%', linia1, hist.bateria(n));
+end
 if trobada
     linia2 = sprintf('FONT TROBADA en %.0f s (%d passos, %d deteccions) | dron a z = %.0f m, fuga a z = %.0f m', ...
                      t(end), n - 1, sum(d), p(3), posFont(3));
+elseif strcmp(vis.motiu, 'bateria')
+    linia2 = sprintf('BATERIA BAIXA: el dron torna a la base. Distancia a la fuga: %.0f m', hist.dist(n));
 elseif final
     linia2 = sprintf('Font NO trobada (limit de passos). Distancia final: %.0f m', hist.dist(n));
 else

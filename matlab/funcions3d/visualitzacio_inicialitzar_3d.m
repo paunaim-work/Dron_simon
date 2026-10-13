@@ -11,11 +11,12 @@ function vis = visualitzacio_inicialitzar_3d(cfg, dom, pl, cerc, posFont, hist, 
 
 vis.tancada = false;
 vis.alg = alg;
+vis.motiu = '';
 vis.fig = figure('Name', 'Cerca 3D de l''origen d''una fuga amb un dron', ...
                  'NumberTitle', 'off', 'Color', 'w', 'Units', 'normalized', ...
                  'Position', [0.02 0.06 0.96 0.86]);
 
-kc = cfg.sensor.sensibilitat * dom.dt;
+kc = cfg.sensor.sensibilitat * dom.tMesura;
 vis.cmin = 0.02 / kc;
 vis.clim = log10([vis.cmin 100 / kc]);
 vis.nivells = cfg.visual.nivellsIso / kc;   % isosuperficies (en comptes esperats per pas)
