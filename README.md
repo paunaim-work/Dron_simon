@@ -4,7 +4,7 @@ Simulació en MATLAB d'un dron que busca l'origen d'una fuga de contaminant (qu�
 
 Projecte: *Disseny i programació d'un dron aeri autònom per a la mesura de contaminació i determinació del seu origen* (Ignasi Reichardt, 2026-2027).
 
-Hi ha dues versions independents: la **2D** (`matlab/`), on el dron vola a una alçada fixa, i la **3D** (`matlab3d/`), on la fuga pot ser a qualsevol alçada i el dron també es mou amunt i avall. Vegeu [Versió 3D](#versió-3d-matlab3d).
+Es pot simular en **2D**, amb el dron volant a una alçada fixa, o en **3D**, on la fuga pot ser a qualsevol alçada i el dron també es mou amunt i avall. Es tria amb una sola opció del mateix script, igual que la ploma o l'algorisme. Vegeu [Versió 3D](#versió-3d).
 
 | Ploma gaussiana + infotaxis | Ploma complexa + infotaxis |
 |---|---|
@@ -17,27 +17,28 @@ Hi ha dues versions independents: la **2D** (`matlab/`), on el dron vola a una a
 1. Obre MATLAB (R2016b o posterior; no cal cap toolbox) a la carpeta `matlab/`.
 2. Obre `main_simulacio.m` i tria les opcions al principi:
    ```matlab
-   cfg.tipusPloma = 'gaussiana';   % 'gaussiana'  o  'complexa'
-   cfg.algorisme  = 'infotaxis';   % 'infotaxis'  o  'gradient'
-   cfg.atzar.activat = true;       % escenari aleatori (false = sempre el mateix)
+   dimensio   = '2d';          % '2d'  o  '3d'
+   tipusPloma = 'gaussiana';   % 'gaussiana'  o  'complexa'
+   algorisme  = 'infotaxis';   % 'infotaxis'  o  'gradient'
+   escenariAleatori = true;    % false = sempre el mateix escenari
    ```
 3. Executa'l (F5). S'obre una finestra amb l'animació i, en acabar, surt un resum a la consola.
 
-Si poses `preguntarOpcions = true`, el programa et demana la ploma, l'algorisme i el tipus d'escenari per la finestra de comandes.
+Si poses `preguntarOpcions = true`, el programa et demana la dimensió, la ploma, l'algorisme i el tipus d'escenari per la finestra de comandes. La resta de paràmetres es poden canviar a l'apartat **ALTRES PARÀMETRES** del mateix script (hi ha exemples comentats) o als fitxers de configuració.
 
 ### Escenaris aleatoris
 
-Amb `cfg.atzar.activat = true` (l'opció per defecte a `main_simulacio.m`), cada execució sorteja unes condicions inicials noves: la posició de la fuga, la posició inicial del dron i la direcció i la velocitat del vent. El dron sempre surt a una distància mínima de la fuga (150 m) i **a sotavent**, és a dir, vent avall, dins d'un con de ±60° al voltant de la direcció del vent. És el cas realista: la contaminació s'ha detectat vent avall i el dron hi va a buscar-ne l'origen.
+Amb `escenariAleatori = true` (l'opció per defecte a `main_simulacio.m`), cada execució sorteja unes condicions inicials noves: la posició de la fuga, la posició inicial del dron i la direcció i la velocitat del vent. El dron sempre surt a una distància mínima de la fuga (150 m) i **a sotavent**, és a dir, vent avall, dins d'un con de ±60° al voltant de la direcció del vent. És el cas realista: la contaminació s'ha detectat vent avall i el dron hi va a buscar-ne l'origen.
 
-- Amb `cfg.atzar.activat = false` sempre es fa servir el mateix escenari, el de `configuracio_defecte.m`.
+- Amb `escenariAleatori = false` sempre es fa servir el mateix escenari, el de `configuracio_defecte.m` (o `configuracio_defecte_3d.m` en 3D).
 - Es pot triar què es sorteja i en quins marges amb els camps `cfg.atzar.*` de `configuracio_defecte.m`: `font`, `dron`, `ventDireccio`, `ventVelocitat`, `estabilitat` (classe A–F), `emissio` (taxa Q), i els seus rangs.
-- Hi ha dues llavors (*seeds*: el número que inicia el generador de nombres aleatoris). `cfg.atzar.llavor` controla l'escenari i `cfg.llavor` la turbulència i el soroll del sensor. Si són `[]`, canvien cada cop. En acabar, la consola escriu les llavors utilitzades: si les copies a `main_simulacio.m`, pots repetir exactament aquella prova.
+- Hi ha dues llavors (*seeds*: el número que inicia el generador de nombres aleatoris). `llavorEscenari` controla l'escenari i `llavor` la turbulència i el soroll del sensor. Si són `[]`, canvien cada cop. En acabar, la consola escriu les llavors utilitzades: si les copies a `main_simulacio.m`, pots repetir exactament aquella prova.
 
 ### Gravar un vídeo
 
-Posa `cfg.visual.gravarVideo = true`. El vídeo es desa a la carpeta **`matlab/videos/`**, que es crea automàticament, amb un nom que inclou la ploma, l'algorisme, la data i l'hora (per exemple `cerca_2d_gaussiana_infotaxis_20261013_153000.mp4`). La consola indica on s'ha desat. El darrer fotograma es manté 2 s perquè es pugui llegir el resultat.
+Posa `gravarVideo = true` a `main_simulacio.m`. El vídeo es desa a la carpeta **`matlab/videos/`**, que es crea automàticament, amb un nom que inclou la ploma, l'algorisme, la data i l'hora (per exemple `cerca_2d_gaussiana_infotaxis_20261013_153000.mp4`). La consola indica on s'ha desat. El darrer fotograma es manté 2 s perquè es pugui llegir el resultat.
 
-- `cfg.visual.formatVideo` pot ser `'mp4'` (per defecte), `'avi'` o `'gif'` (GIF animat, útil per a presentacions; es redueix a la meitat de resolució perquè no ocupi tant).
+- `formatVideo` pot ser `'mp4'` (per defecte), `'avi'` o `'gif'` (GIF animat, útil per a presentacions; es redueix a la meitat de resolució perquè no ocupi tant).
 - Si l'ordinador no pot gravar MP4 (MATLAB a Linux), es desa en AVI. GNU Octave no té `VideoWriter` i desa un GIF.
 - Si tanques la finestra o atures la simulació amb Ctrl+C, el vídeo gravat fins aquell moment es tanca bé i es pot reproduir.
 
@@ -45,7 +46,7 @@ Els fitxers `.asv` que poden aparèixer al costat dels scripts no tenen res a ve
 
 ### Comparativa Monte Carlo
 
-Per comparar els algorismes estadísticament (mètode de **Monte Carlo**: repetir la simulació moltes vegades amb nombres aleatoris diferents i fer estadística dels resultats), executa `comparativa_montecarlo.m`. Fa 20 cerques per combinació sense animació i en mostra la taxa d'èxit i el temps de cerca. Amb `escenarisAleatoris = true`, cada repetició té un escenari diferent, però el mateix per a tots els algorismes, perquè la comparació sigui justa.
+Per comparar els algorismes estadísticament (mètode de **Monte Carlo**: repetir la simulació moltes vegades amb nombres aleatoris diferents i fer estadística dels resultats), executa `comparativa_montecarlo.m` (amb l'opció `dimensio = '2d'` o `'3d'`). Fa 20 cerques per combinació sense animació i en mostra la taxa d'èxit i el temps de cerca. Amb `escenarisAleatoris = true`, cada repetició té un escenari diferent, però el mateix per a tots els algorismes, perquè la comparació sigui justa.
 
 També funciona amb GNU Octave (provat amb la versió 8.4). Com que Octave dibuixa més lentament, val la pena posar `cfg.visual.cadaNPassos = 5`.
 
@@ -58,21 +59,21 @@ També funciona amb GNU Octave (provat amb la versió 8.4). Com que Octave dibui
 ## Estructura
 
 ```
-matlab/                        ← VERSIÓ 2D
-├── main_simulacio.m           ← script principal (tria ploma i algorisme)
-├── comparativa_montecarlo.m   ← estadística de moltes cerques
-└── funcions/
-    ├── configuracio_defecte.m ← TOTS els paràmetres (amb comentaris)
-    ├── simular_cerca.m        ← bucle de simulació
-    ├── ploma_*.m, sigma_briggs.m   ← models de ploma
-    ├── sensor_llegir.m, poisson_aleatori.m   ← model del sensor
-    ├── infotaxis_*.m, model_taxa_deteccio.m, versemblanca.m, entropia.m
-    ├── gradient_*.m
-    └── visualitzacio_*.m, mapa_colors.m
-matlab3d/                      ← VERSIÓ 3D (usa algunes funcions generals de matlab/funcions)
-├── main_simulacio_3d.m        ← script principal 3D
-├── comparativa_montecarlo_3d.m
-└── funcions3d/                ← totes les funcions acaben en _3d
+matlab/
+├── main_simulacio.m           ← script principal (tria 2D/3D, ploma i algorisme)
+├── comparativa_montecarlo.m   ← estadística de moltes cerques (2D o 3D)
+├── funcions/                  ← versió 2D i funcions comunes (vídeo, escenaris, Poisson...)
+│   ├── configuracio_defecte.m ← TOTS els paràmetres 2D (amb comentaris)
+│   ├── simular_cerca.m        ← bucle de simulació
+│   ├── ploma_*.m, sigma_briggs.m   ← models de ploma
+│   ├── sensor_llegir.m, poisson_aleatori.m   ← model del sensor
+│   ├── infotaxis_*.m, model_taxa_deteccio.m, versemblanca.m, entropia.m
+│   ├── gradient_*.m
+│   ├── video_*.m, aplicar_escenari_aleatori.m
+│   └── visualitzacio_*.m, mapa_colors.m
+└── funcions3d/                ← versió 3D (totes acaben en _3d)
+    ├── configuracio_defecte_3d.m ← TOTS els paràmetres 3D
+    └── simular_cerca_3d.m, ploma_*_3d.m, infotaxis_*_3d.m, ...
 ```
 
 ## Models de ploma
@@ -192,13 +193,13 @@ L'infotaxis és més ràpid i més fiable, sobretot amb la ploma complexa, on el
 | `visual.formatVideo` | 'mp4' | 'mp4', 'avi' o 'gif' |
 | `visual.fpsVideo` | 15 | fotogrames per segon del vídeo |
 
-## Versió 3D (`matlab3d/`)
+## Versió 3D
 
 | Ploma gaussiana 3D + infotaxis | Ploma complexa 3D + infotaxis |
 |---|---|
 | ![](figures/exemple3d_gaussiana_infotaxis.png) | ![](figures/exemple3d_complexa_infotaxis.png) |
 
-**Com s'executa:** obre `matlab3d/main_simulacio_3d.m` a MATLAB, tria `cfg.tipusPloma` i `cfg.algorisme` a les línies 29-30 i prem F5. Els escenaris aleatoris i el vídeo funcionen igual que a la versió 2D (vegeu [Escenaris aleatoris](#escenaris-aleatoris) i [Gravar un vídeo](#gravar-un-vídeo)). En 3D també se sortegen l'alçada de la fuga (0–20 m) i l'alçada inicial del dron (10–40 m), i els vídeos es desen a `matlab3d/videos/`. Aquesta versió fa servir algunes funcions generals de la 2D (llei de Poisson, entropia, coeficients de Briggs, colors), per això les carpetes `matlab` i `matlab3d` han d'estar l'una al costat de l'altra, tal com són al repositori.
+**Com s'executa:** al mateix `matlab/main_simulacio.m`, posa `dimensio = '3d'` i prem F5. Els escenaris aleatoris i el vídeo funcionen igual que en 2D (vegeu [Escenaris aleatoris](#escenaris-aleatoris) i [Gravar un vídeo](#gravar-un-vídeo)). En 3D també se sortegen l'alçada de la fuga (0–20 m) i l'alçada inicial del dron (10–40 m). Els paràmetres 3D són a `matlab/funcions3d/configuracio_defecte_3d.m`.
 
 **Què canvia respecte de la 2D:**
 
@@ -235,7 +236,7 @@ L'infotaxis és més ràpid i més fiable, sobretot amb la ploma complexa, on el
 
 Amb 12 escenaris aleatoris per ploma, l'infotaxis 3D troba la fuga, a la seva alçada, en tots 24.
 
-L'infotaxis 3D és més costós de calcular que el 2D (unes 44.000 cel·les en lloc de 5.000). Si l'animació va lenta, puja `cfg.visual.cadaNPassos`. `comparativa_montecarlo_3d.m` fa l'estadística en 3D.
+L'infotaxis 3D és més costós de calcular que el 2D (unes 44.000 cel·les en lloc de 5.000). Si l'animació va lenta, puja `cadaNPassos` (per exemple a 3). Per a l'estadística en 3D, posa `dimensio = '3d'` a `comparativa_montecarlo.m`.
 
 ## Idees per continuar el projecte
 

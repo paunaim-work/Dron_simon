@@ -5,7 +5,8 @@
 %  repeticio canvia la turbulencia i el soroll del sensor i, si
 %  escenarisAleatoris = true, tambe l'escenari (posicio de la fuga i del
 %  dron, vent...). La repeticio r te el mateix escenari per a tots els
-%  algorismes, perque la comparacio sigui justa.
+%  algorismes, perque la comparacio sigui justa. Funciona en 2D i en 3D
+%  (l'infotaxis 3D es mes lent: compta uns quants minuts).
 
 clear; close all; clc;
 carpeta = fileparts(mfilename('fullpath'));
@@ -13,13 +14,26 @@ if isempty(carpeta)
     carpeta = pwd;
 end
 addpath(fullfile(carpeta, 'funcions'));
+addpath(fullfile(carpeta, 'funcions3d'));
 
 %% ========================= OPCIONS =========================
-nRepeticions     = 20;                         % cerques per combinacio
+dimensio         = '2d';                       % '2d'  o  '3d'
+nRepeticions     = 20;                         % cerques per combinacio (en 3D prova 10)
 plomes           = {'gaussiana', 'complexa'};
 algorismes       = {'infotaxis', 'gradient'};
-escenarisAleatoris = true;  % false: sempre l'escenari fix de configuracio_defecte.m
+escenarisAleatoris = true;  % false: sempre l'escenari fix del fitxer de configuracio
 %% ===========================================================
+
+switch lower(dimensio)
+    case '2d'
+        crearConfig = @configuracio_defecte;
+        simular     = @simular_cerca;
+    case '3d'
+        crearConfig = @configuracio_defecte_3d;
+        simular     = @simular_cerca_3d;
+    otherwise
+        error('Dimensio desconeguda: %s (usa ''2d'' o ''3d'')', dimensio);
+end
 
 nP = numel(plomes);
 nA = numel(algorismes);
@@ -30,7 +44,7 @@ for ip = 1:nP
     for ia = 1:nA
         tt = nan(nRepeticions, 1);
         for r = 1:nRepeticions
-            cfg = configuracio_defecte();
+            cfg = crearConfig();
             cfg.tipusPloma = plomes{ip};
             cfg.algorisme  = algorismes{ia};
             cfg.visual.mostrar = false;
@@ -38,7 +52,7 @@ for ip = 1:nP
             cfg.atzar.activat = escenarisAleatoris;
             cfg.atzar.llavor  = r;          % escenari r (igual per a tots els algorismes)
             cfg.atzar.mostrar = false;
-            res = simular_cerca(cfg);
+            res = simular(cfg);
             if res.trobada
                 tt(r) = res.temps;
             end
@@ -51,7 +65,8 @@ for ip = 1:nP
 end
 
 %% Taula de resultats
-fprintf('\n%-10s %-10s %8s %12s %12s\n', 'Ploma', 'Algorisme', 'Exit(%)', 'T mitja (s)', 'T mediana(s)');
+fprintf('\nResultats %s (%d repeticions)\n', upper(dimensio), nRepeticions);
+fprintf('%-10s %-10s %8s %12s %12s\n', 'Ploma', 'Algorisme', 'Exit(%)', 'T mitja (s)', 'T mediana(s)');
 for ip = 1:nP
     for ia = 1:nA
         tt = temps{ip, ia};
@@ -67,7 +82,7 @@ for ip = 1:nP
 end
 
 %% Grafiques
-figure('Name', 'Comparativa Monte Carlo', 'Color', 'w', 'Position', [100 100 1100 420]);
+figure('Name', ['Comparativa Monte Carlo ' upper(dimensio)], 'Color', 'w', 'Position', [100 100 1100 420]);
 subplot(1, 2, 1);
 bar(100 * taxaExit);
 set(gca, 'XTick', 1:nP, 'XTickLabel', plomes);
@@ -75,7 +90,7 @@ ylabel('Cerques amb exit (%)');
 legend(algorismes, 'Location', 'southoutside', 'Orientation', 'horizontal');
 ylim([0 105]);
 grid on;
-title('Taxa d''exit');
+title(['Taxa d''exit (' upper(dimensio) ')']);
 
 subplot(1, 2, 2);
 hold on;
@@ -97,5 +112,5 @@ end
 set(gca, 'XTick', 1:x, 'XTickLabel', etiq);
 xlim([0.5 x + 0.5]);
 ylabel('Temps de cerca (s)');
-title('Temps de les cerques amb exit (linia = mediana)');
+title(['Temps de les cerques amb exit, ' upper(dimensio) ' (linia = mediana)']);
 grid on;
