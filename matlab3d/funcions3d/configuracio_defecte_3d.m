@@ -36,6 +36,33 @@ cfg.dron.radiDeteccio = [];             % m; [] = 1.5*dx
 cfg.vent.direccio = 0;          % graus: direccio CAP ON bufa (0 = cap a +x)
 
 % =====================================================================
+%  ESCENARI ALEATORI (condicions inicials diferents a cada prova)
+% =====================================================================
+% Igual que a la versio 2D (vegeu aplicar_escenari_aleatori.m), mes les
+% alcades de la fuga i del dron (aplicar_escenari_aleatori_3d.m).
+cfg.atzar.activat         = false;
+cfg.atzar.llavor          = [];        % llavor de l'escenari ([] = diferent cada cop)
+cfg.atzar.mostrar         = true;
+cfg.atzar.font            = true;      % posicio horitzontal de la fuga
+cfg.atzar.alcadaFont      = true;      % alcada de la fuga
+cfg.atzar.dron            = true;      % posicio horitzontal inicial del dron
+cfg.atzar.alcadaDron      = true;      % alcada inicial del dron
+cfg.atzar.ventDireccio    = true;
+cfg.atzar.ventVelocitat   = true;
+cfg.atzar.estabilitat     = false;
+cfg.atzar.emissio         = false;
+cfg.atzar.rangDireccio    = [0 360];   % graus
+cfg.atzar.rangVelocitat   = [1.5 4.5]; % m/s
+cfg.atzar.classes         = 'BCDE';
+cfg.atzar.rangEmissio     = [0.5 2];
+cfg.atzar.rangAlcadaFont  = [0 20];    % m
+cfg.atzar.rangAlcadaDron  = [10 40];   % m
+cfg.atzar.distanciaMinima = 150;       % distancia horitzontal minima dron-fuga (m)
+cfg.atzar.marge           = 20;        % m
+cfg.atzar.dronASotavent   = true;
+cfg.atzar.angleMaxim      = 60;        % graus
+
+% =====================================================================
 %  SENSOR: k ~ Poisson( dt*(sensibilitat*c + fons) )
 % =====================================================================
 cfg.sensor.sensibilitat = 1;
@@ -103,6 +130,9 @@ cfg.visual.resolucio3d  = [5 2.5];   % resolucio [horitzontal vertical] de la pl
 cfg.visual.exageracioVertical = 4;   % l'eix z es veu 4 vegades mes gran
 cfg.visual.nivellsIso  = [0.5 5];    % superficies de la ploma 3D (comptes esperats per pas)
 cfg.visual.vista        = [-35 25];  % angle de la camera [azimut elevacio] (graus)
-cfg.visual.gravarVideo  = false;
-cfg.visual.fitxerVideo  = 'cerca_dron_3d.mp4';
+cfg.visual.gravarVideo  = false;     % desa un video de l'animacio
+cfg.visual.formatVideo  = 'mp4';     % 'mp4' | 'avi' | 'gif'
+cfg.visual.fpsVideo     = 15;
+cfg.visual.carpetaVideo = '';        % '' = carpeta 'videos' dins la carpeta actual
+cfg.visual.nomVideo     = '';        % '' = automatic (ploma, algorisme, data i hora)
 end

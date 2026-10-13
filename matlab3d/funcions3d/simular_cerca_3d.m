@@ -6,6 +6,13 @@ function res = simular_cerca_3d(cfg)
 %   res.deteccions i res.hist (posicions [x y z], comptes, distancia,
 %   entropia...).
 
+% Condicions inicials aleatories (si cfg.atzar.activat)
+cfg = aplicar_escenari_aleatori_3d(cfg);
+
+% Llavor de la turbulencia i del soroll ([] -> se'n tria una i es desa)
+if isempty(cfg.llavor)
+    cfg.llavor = mod(floor(now * 1e7) + 7919, 2^31 - 1);
+end
 fixar_llavor(cfg.llavor);
 dom = crear_domini_3d(cfg);
 alg = lower(cfg.algorisme);
@@ -46,6 +53,8 @@ end
 vis = [];
 if cfg.visual.mostrar
     vis = visualitzacio_inicialitzar_3d(cfg, dom, pl, cerc, posFont, hist, n, alg);
+    % Si la simulacio s'interromp (error, Ctrl+C), el video es tanca igualment
+    tancarVideo = onCleanup(@() video_tancar_segur(vis.video)); %#ok<NASGU>
 end
 
 for t = 1:N
@@ -82,8 +91,10 @@ for t = 1:N
     end
 end
 
-if ~isempty(vis) && ~vis.tancada
-    vis = visualitzacio_actualitzar_3d(vis, cfg, dom, pl, cerc, posFont, hist, n, alg, trobada, true);
+if ~isempty(vis)
+    if ~vis.tancada
+        vis = visualitzacio_actualitzar_3d(vis, cfg, dom, pl, cerc, posFont, hist, n, alg, trobada, true);
+    end
     visualitzacio_finalitzar(vis);
 end
 

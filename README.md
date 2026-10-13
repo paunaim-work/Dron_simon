@@ -198,7 +198,7 @@ L'infotaxis és més ràpid i més fiable, sobretot amb la ploma complexa, on el
 |---|---|
 | ![](figures/exemple3d_gaussiana_infotaxis.png) | ![](figures/exemple3d_complexa_infotaxis.png) |
 
-**Com s'executa:** obre `matlab3d/main_simulacio_3d.m` a MATLAB, tria `cfg.tipusPloma` i `cfg.algorisme` a les línies 29-30 i prem F5. Aquesta versió fa servir algunes funcions generals de la 2D (llei de Poisson, entropia, coeficients de Briggs, colors), per això les carpetes `matlab` i `matlab3d` han d'estar l'una al costat de l'altra, tal com són al repositori. La versió 2D no s'ha modificat.
+**Com s'executa:** obre `matlab3d/main_simulacio_3d.m` a MATLAB, tria `cfg.tipusPloma` i `cfg.algorisme` a les línies 29-30 i prem F5. Els escenaris aleatoris i el vídeo funcionen igual que a la versió 2D (vegeu [Escenaris aleatoris](#escenaris-aleatoris) i [Gravar un vídeo](#gravar-un-vídeo)). En 3D també se sortegen l'alçada de la fuga (0–20 m) i l'alçada inicial del dron (10–40 m), i els vídeos es desen a `matlab3d/videos/`. Aquesta versió fa servir algunes funcions generals de la 2D (llei de Poisson, entropia, coeficients de Briggs, colors), per això les carpetes `matlab` i `matlab3d` han d'estar l'una al costat de l'altra, tal com són al repositori.
 
 **Què canvia respecte de la 2D:**
 

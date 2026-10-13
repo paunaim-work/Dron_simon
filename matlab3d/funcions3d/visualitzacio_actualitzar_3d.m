@@ -17,7 +17,8 @@ if strcmp(pl.tipus, 'complexa')
 else
     th = dom.theta;
 end
-[fx, fy, fz] = fletxa3(vis.baseVent, vis.longFletxa * [cos(th) sin(th) 0]);
+v = vis.longFletxa * [cos(th) sin(th) 0];
+[fx, fy, fz] = fletxa3(vis.baseVent - v / 2, v);
 set(vis.hVent, 'XData', fx, 'YData', fy, 'ZData', fz);
 
 % --- Escena 3D ---
@@ -92,9 +93,7 @@ drawnow;
 if cfg.visual.pausa > 0
     pause(cfg.visual.pausa);
 end
-if ~isempty(vis.video)
-    writeVideo(vis.video, getframe(vis.fig));
-end
+vis.video = video_afegir(vis.video, vis.fig);
 end
 
 % ---------------------------------------------------------------------

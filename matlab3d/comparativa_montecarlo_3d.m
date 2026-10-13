@@ -1,7 +1,9 @@
 %% COMPARATIVA MONTE CARLO DELS ALGORISMES DE CERCA (3D)
 %
 %  Repeteix moltes cerques 3D (sense animacio) per a cada combinacio de
-%  ploma i algorisme i en calcula la taxa d'exit i el temps de cerca.
+%  ploma i algorisme i en calcula la taxa d'exit i el temps de cerca. Si
+%  escenarisAleatoris = true, cada repeticio te un escenari diferent (el
+%  mateix per a tots els algorismes, perque la comparacio sigui justa).
 %  L'infotaxis 3D es mes costos de calcular que el 2D: compta uns
 %  quants minuts.
 
@@ -17,8 +19,7 @@ addpath(fullfile(carpeta, '..', 'matlab', 'funcions'));
 nRepeticions     = 10;                         % cerques per combinacio
 plomes           = {'gaussiana', 'complexa'};
 algorismes       = {'infotaxis', 'gradient'};
-posInicialAtzar  = false;   % true: el dron surt d'un punt (x, y, z) a l'atzar
-distanciaMinima  = 150;     % m (nomes si posInicialAtzar)
+escenarisAleatoris = true;  % false: sempre l'escenari fix de configuracio_defecte_3d.m
 %% ===========================================================
 
 nP = numel(plomes);
@@ -35,15 +36,9 @@ for ip = 1:nP
             cfg.algorisme  = algorismes{ia};
             cfg.visual.mostrar = false;
             cfg.llavor = 1000 * ip + r;
-            if posInicialAtzar
-                fixar_llavor(cfg.llavor + 7);
-                d = 0;
-                while d < distanciaMinima
-                    p = [rand * cfg.domini.Lx, rand * cfg.domini.Ly, rand * cfg.domini.Lz];
-                    d = norm(p - cfg.font.pos);
-                end
-                cfg.dron.posInicial = p;
-            end
+            cfg.atzar.activat = escenarisAleatoris;
+            cfg.atzar.llavor  = r;          % escenari r (igual per a tots els algorismes)
+            cfg.atzar.mostrar = false;
             res = simular_cerca_3d(cfg);
             if res.trobada
                 tt(r) = res.temps;

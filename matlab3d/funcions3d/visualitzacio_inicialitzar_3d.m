@@ -45,9 +45,10 @@ vis.hPal   = plot3(vis.ax1, p0([1 1]), p0([2 2]), [0 p0(3)], ':', 'Color', [0 0.
 vis.hDron  = plot3(vis.ax1, p0(1), p0(2), p0(3), 'o', 'MarkerSize', 11, ...
                    'MarkerFaceColor', [0 0.9 1], 'MarkerEdgeColor', 'k', 'LineWidth', 1.5);
 
-vis.baseVent = [0.06 * Lx, 0.92 * Ly, Lz];
+vis.baseVent = [0.09 * Lx, 0.88 * Ly, Lz];   % centre de la fletxa del vent
 vis.hVent = plot3(vis.ax1, NaN, NaN, NaN, '-', 'Color', [0.2 0.2 0.2], 'LineWidth', 2.5);
-text(vis.baseVent(1), vis.baseVent(2), Lz + 0.12 * Lz, 'vent', 'Parent', vis.ax1, 'FontWeight', 'bold');
+text(vis.baseVent(1), vis.baseVent(2), Lz + 0.12 * Lz, 'vent', 'Parent', vis.ax1, ...
+     'FontWeight', 'bold', 'HorizontalAlignment', 'center');
 
 switch alg
     case 'infotaxis'
@@ -152,16 +153,7 @@ xlabel(vis.ax6, 'Temps (s)');
 grid(vis.ax6, 'on');
 
 % ------------------------------ Video ------------------------------
-vis.video = [];
-if cfg.visual.gravarVideo
-    if exist('VideoWriter', 'file') || exist('VideoWriter', 'class')
-        vis.video = VideoWriter(cfg.visual.fitxerVideo, 'MPEG-4');
-        vis.video.FrameRate = 20;
-        open(vis.video);
-    else
-        warning('VideoWriter no disponible: no es gravara el video.');
-    end
-end
+vis.video = video_obrir(cfg, '3d');
 
 vis = visualitzacio_actualitzar_3d(vis, cfg, dom, pl, cerc, posFont, hist, n, alg, false, false);
 end

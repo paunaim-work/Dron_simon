@@ -28,20 +28,31 @@ cfg = configuracio_defecte_3d();
 %% ===================== TRIA LES OPCIONS AQUI =====================
 cfg.tipusPloma = 'gaussiana';   % 'gaussiana'  o  'complexa'
 cfg.algorisme  = 'infotaxis';   % 'infotaxis'  o  'gradient'
-cfg.llavor     = 1;             % canvia-la per veure una altra realitzacio ([] = aleatoria)
+
+% Escenari aleatori: true = cada execucio sorteja la posicio i l'alcada
+% de la fuga i del dron i el vent (direccio i velocitat); false = sempre
+% el mateix escenari (el de configuracio_defecte_3d.m). Que se sorteja i
+% en quins marges es tria amb cfg.atzar.* (vegeu configuracio_defecte_3d.m).
+cfg.atzar.activat = true;
+cfg.atzar.llavor  = [];         % [] = escenari nou cada cop; un numero = repeteix aquell escenari
+cfg.llavor        = [];         % turbulencia i soroll del sensor: [] = diferents cada cop; un numero = repetible
 
 % Posa-ho a true per triar les opcions per la finestra de comandes
 preguntarOpcions = false;
 
 % Visualitzacio
-cfg.visual.mostrar     = true;
-cfg.visual.cadaNPassos = 1;      % puja'l (p. ex. 3) si l'animacio va lenta
-cfg.visual.pausa       = 0;      % s entre fotogrames (alenteix l'animacio)
-cfg.visual.gravarVideo = false;  % true -> desa cerca_dron_3d.mp4
+cfg.visual.mostrar      = true;
+cfg.visual.cadaNPassos  = 1;      % puja'l (p. ex. 3) si l'animacio va lenta
+cfg.visual.pausa        = 0;      % s entre fotogrames (alenteix l'animacio)
+cfg.visual.gravarVideo  = false;  % true -> desa un video de l'animacio
+cfg.visual.formatVideo  = 'mp4';  % 'mp4', 'avi' o 'gif'
+cfg.visual.carpetaVideo = fullfile(carpeta, 'videos');   % on es desen els videos
 
 % Exemples d'altres parametres que pots canviar:
-% cfg.font.pos           = [60 150 10];  % on es la fuga [x y z] (m)
-% cfg.dron.posInicial    = [340 215 30]; % d'on surt el dron [x y z] (m)
+% cfg.atzar.alcadaFont   = false;        % no sortegis l'alcada de la fuga
+% cfg.atzar.estabilitat  = true;         % sorteja tambe la classe d'estabilitat
+% cfg.font.pos           = [60 150 10];  % on es la fuga [x y z] (m) si no se sorteja
+% cfg.dron.posInicial    = [340 215 30]; % d'on surt el dron [x y z] (m) si no se sorteja
 % cfg.domini.Lz          = 40;           % alcada maxima de vol (m)
 % cfg.vent.direccio      = 0;            % cap on bufa el vent (graus)
 % cfg.gauss.estabilitat  = 'D';          % classe d'estabilitat A..F
@@ -62,6 +73,8 @@ if preguntarOpcions
     else
         cfg.algorisme = 'infotaxis';
     end
+    op = input('Escenari: 1 = aleatori, 2 = fix  [1]: ');
+    cfg.atzar.activat = ~isequal(op, 2);
 end
 
 fprintf('Ploma: %s 3D | Algorisme: %s\n', cfg.tipusPloma, cfg.algorisme);
@@ -80,3 +93,9 @@ fprintf('Distancia recorreguda:%8.0f m\n', res.recorregut);
 fprintf('Distancia inicial:    %8.0f m\n', res.hist.dist(1));
 fprintf('Deteccions:           %8d\n', res.deteccions);
 fprintf('========================================\n');
+if cfg.atzar.activat
+    fprintf('Per repetir exactament aquesta prova:\n   cfg.atzar.llavor = %d;  cfg.llavor = %d;\n', ...
+            res.cfg.atzar.llavorUsada, res.cfg.llavor);
+else
+    fprintf('Per repetir exactament aquesta prova:  cfg.llavor = %d;\n', res.cfg.llavor);
+end
