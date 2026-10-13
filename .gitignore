@@ -1,0 +1,10 @@
+# MATLAB
+*.asv
+*.mex*
+slprj/
+octave-workspace
+
+# Sortides de la simulacio
+*.mp4
+*.avi
+*.mat
