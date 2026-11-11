@@ -11,204 +11,177 @@ function simulacio_dron()
 %     - la ploma:     'gaussiana' (estacionaria, model de Pasquill-Gifford)
 %                     'complexa'  (turbulenta: "puffs" que el vent s'emporta)
 %     - l'algorisme:  'infotaxis' (Vergassola, Villermaux i Shraiman, Nature 2007)
-%                     'gradient'  (puja pel gradient de concentracio)
+%                     'gradient'  (puja pel gradient de concentracio; si perd
+%                                  el senyal, el busca en zig-zag de traves al vent)
 %
 %   Executa-la amb F5. Les opcions i els parametres son just a sota.
 
 %% ============================= OPCIONS =============================
-dimensio   = '3d';          % '2d' o '3d'
-tipusPloma = 'complexa';    % 'gaussiana' o 'complexa'
-algorisme  = 'infotaxis';   % 'infotaxis' o 'gradient'
-llavor     = 1;             % mateix numero = mateixa simulacio ([] = cada cop diferent)
-mostrar    = true;          % false = sense animacio (mes rapid)
-cadaN      = 2;             % dibuixa cada N passos
+dimensio           = '3d';          % '2d' o '3d'
+tipusPloma         = 'complexa';    % 'gaussiana' o 'complexa'
+algorisme          = 'infotaxis';   % 'infotaxis' o 'gradient'
+llavor             = 1;             % mateix numero = mateixa simulacio ([] = cada cop diferent)
+mostrarAnimacio    = true;          % false = sense animacio (mes rapid)
+dibuixaCadaNPassos = 2;             % redibuixa la figura cada N passos
 
 %% ============================ PARAMETRES ============================
 % Unitats: metres i segons. El vent bufa cap a +x i el terra es z = 0.
-p.Lx = 400;  p.Ly = 300;    % mida horitzontal de la zona de cerca
-p.Lz = 40;                  % alcada maxima de vol (nomes en 3D; la minima es dx)
-p.dx = 5;                   % mida de cel.la = el que avanca el dron a cada pas
-p.font  = [60 150 10];      % on es la fuga [x y z] (el dron NO ho sap)
-p.inici = [340 215 30];     % d'on surt el dron [x y z] (en 2D, z = alcada de la fuga)
-p.vDron = 5;                % velocitat del dron (m/s)
-p.maxPassos = 2500;         % limit de passos (autonomia)
+par.midaX = 400;                    % llargada de la zona de cerca (direccio del vent)
+par.midaY = 300;                    % amplada de la zona de cerca (de traves al vent)
+par.alcadaMaxima = 40;              % alcada maxima de vol (nomes en 3D; la minima es una cel.la)
+par.midaCella = 5;                  % mida de cel.la = el que avanca el dron a cada pas
+par.posFuga        = [60 150 10];   % on es la fuga [x y z] (el dron NO ho sap)
+par.posInicialDron = [340 215 30];  % d'on surt el dron [x y z] (en 2D, z = alcada de la fuga)
+par.velocitatDron  = 5;             % m/s
+par.maxPassos      = 2500;          % limit de passos (autonomia)
 
 % Sensor: comptador de deteccions (tipus Geiger).
-% Comptes en un pas ~ Poisson( dt * (sens * concentracio + fons) )
-p.sens = 1;                 % comptes/s per unitat de concentracio
-p.fons = 0.02;              % comptes/s de fons (falses deteccions)
+% Comptes en un pas ~ Poisson( tempsPas * (sensibilitat * concentracio + fons) )
+par.sensibilitat = 1;               % comptes/s per unitat de concentracio
+par.fonsSensor   = 0.02;            % comptes/s de fons (falses deteccions)
 
 % Ploma gaussiana
-p.Qg = 5000;                % taxa d'emissio
-p.Ug = 3;                   % velocitat del vent (m/s)
-p.sigma0g = 1;              % mida de la fuga (m)
+par.gaussEmissio  = 5000;           % taxa d'emissio
+par.gaussVent     = 3;              % velocitat del vent (m/s)
+par.gaussMidaFuga = 1;              % mida de la fuga (m)
 
 % Ploma complexa
-p.Q   = 2000;               % taxa d'emissio
-p.U   = 2;                  % velocitat mitjana del vent (m/s)
-p.tau = 200;                % temps de vida del contaminant (s)
-p.puffsPerSeg  = 2;         % puffs emesos per segon
-p.sigma0       = 1.5;       % mida inicial d'un puff (m)
-p.DpuffH = 0.4;  p.DpuffV = 0.2;   % rapidesa amb que s'eixampla un puff, horitzontal i vertical (m^2/s)
-p.DturbH = 0.4;  p.DturbV = 0.2;   % moviment aleatori dels puffs, horitzontal i vertical (m^2/s)
-p.sigmaMeandre = 15;        % oscil.lacio de la direccio del vent (graus)
-p.Tmeandre     = 40;        % temps tipic d'aquesta oscil.lacio (s)
+par.emissio       = 2000;           % taxa d'emissio
+par.vent          = 2;              % velocitat mitjana del vent (m/s)
+par.tempsVida     = 200;            % temps de vida del contaminant (s)
+par.puffsPerSegon = 2;              % puffs emesos per segon
+par.midaPuff      = 1.5;            % mida inicial d'un puff (m)
+par.creixementH   = 0.4;            % rapidesa amb que s'eixampla un puff en horitzontal (m^2/s)
+par.creixementV   = 0.2;            % ... i en vertical (m^2/s)
+par.turbulenciaH  = 0.4;            % moviment aleatori dels puffs en horitzontal (m^2/s)
+par.turbulenciaV  = 0.2;            % ... i en vertical (m^2/s)
+par.meandreGraus  = 15;             % oscil.lacio de la direccio del vent (graus)
+par.meandreTemps  = 40;             % temps tipic d'aquesta oscil.lacio (s)
 
 % Infotaxis
-p.bins = [0 1 2 3 5 8 13 21 34 55 89];   % intervals de comptes per planificar
+par.intervalsComptes = [0 1 2 3 5 8 13 21 34 55 89];   % intervals de comptes per planificar
 
 % Gradient
-p.d       = 5;              % distancia dels sensors al centre del dron (m)
-p.alfa    = 0.6;            % suavitzat del gradient (0 = cap, 0.9 = molt)
-p.llindar = 2;              % comptes (suma dels sensors) per considerar que detecta
-p.memoria = 8;              % passos sense detectar abans de tornar a explorar
-p.pGir    = 0.15;           % en exploracio, probabilitat de girar a cada pas
-p.pVert   = 0.05;           % en exploracio 3D, probabilitat de canviar d'alcada a cada pas
+par.separacioSensors = 5;           % distancia dels sensors al centre del dron (m)
+par.suavitzat        = 0.6;         % suavitzat del gradient (0 = cap, 0.9 = molt)
+par.llindarDeteccio  = 2;           % comptes (suma dels sensors) per considerar que detecta
+par.passosMemoria    = 4;           % passos sense detectar abans de posar-se a buscar
+par.tramInicial      = 4;           % primer tram del zig-zag de cerca (cel.les); cada tram es el doble
 %% ====================================================================
 
 if ~isempty(llavor)
     rng(llavor);
 end
-infotaxis = strcmp(algorisme, 'infotaxis');
-complexa  = strcmp(tipusPloma, 'complexa');
-tresD     = strcmp(dimensio, '3d');
+usaInfotaxis  = strcmp(algorisme, 'infotaxis');
+plomaComplexa = strcmp(tipusPloma, 'complexa');
+tresD         = strcmp(dimensio, '3d');
 
-% --- Graella: les matrius tenen mida Ny x Nx x Nz i s'indexen (iy, ix, iz) ---
-g.x = 0:p.dx:p.Lx;
-g.y = 0:p.dx:p.Ly;
+% --- Graella: les matrius tenen mida ny x nx x nz i s'indexen (iy, ix, iz) ---
+graella.x = 0:par.midaCella:par.midaX;
+graella.y = 0:par.midaCella:par.midaY;
 if tresD
-    g.z = p.dx:p.dx:p.Lz;                % el dron no vola arran de terra
+    graella.z = par.midaCella:par.midaCella:par.alcadaMaxima;   % el dron no vola arran de terra
 else
-    g.z = p.font(3);                     % 2D: una sola alcada, la de la fuga
-    p.inici(3) = p.font(3);
+    graella.z = par.posFuga(3);                 % 2D: una sola alcada, la de la fuga
+    par.posInicialDron(3) = par.posFuga(3);
 end
-g.Nx = numel(g.x);  g.Ny = numel(g.y);  g.Nz = numel(g.z);
-[g.X, g.Y] = meshgrid(g.x, g.y);
-% Moviments [diy dix diz]: est, nord, oest, sud, amunt, avall, quiet
-g.movs = [0 1 0; 1 0 0; 0 -1 0; -1 0 0; 0 0 1; 0 0 -1; 0 0 0];
-dt = p.dx / p.vDron;                     % durada d'un pas (s)
+graella.nx = numel(graella.x);
+graella.ny = numel(graella.y);
+graella.nz = numel(graella.z);
+[graella.X, graella.Y] = meshgrid(graella.x, graella.y);
+% Moviments possibles [diy dix diz]: est, nord, oest, sud, amunt, avall, quiet
+graella.moviments = [0 1 0; 1 0 0; 0 -1 0; -1 0 0; 0 0 1; 0 0 -1; 0 0 0];
+tempsPas = par.midaCella / par.velocitatDron;   % durada d'un pas (s)
 
-celFont = cella(p.font, p, g);           % cel.la [iy ix iz] de la fuga
-pos     = cella(p.inici, p, g);          % cel.la [iy ix iz] del dron
+celFuga = posicio_a_cella(par.posFuga, par, graella);          % cel.la [iy ix iz] de la fuga
+celDron = posicio_a_cella(par.posInicialDron, par, graella);   % cel.la [iy ix iz] del dron
 
 % --- Ploma: la complexa evoluciona 300 s abans que surti el dron ---
 buit = zeros(0, 1);
-pl = struct('tipus', tipusPloma, 'x', buit, 'y', buit, 'z', buit, ...
-            's2h', buit, 's2v', buit, 'm', buit, 'th', 0);
-if complexa
-    for i = 1:round(300 / dt)
-        pl = avancar_ploma(pl, p, dt);
+ploma = struct('tipus', tipusPloma, 'x', buit, 'y', buit, 'z', buit, ...
+               'sigma2H', buit, 'sigma2V', buit, 'massa', buit, 'angleVent', 0);
+if plomaComplexa
+    for i = 1:round(300 / tempsPas)
+        ploma = avancar_ploma(ploma, par, tempsPas);
     end
 end
 
 % --- Estat inicial del cercador ---
-if infotaxis
-    K = model_infotaxis(tipusPloma, p, g, dt);   % comptes esperats segons el model del dron
-    P = ones(g.Ny, g.Nx, g.Nz);                  % probabilitat de on es la fuga: uniforme
-    P(zona(pos, g)) = 0;
-    P = P / sum(P(:));
+if usaInfotaxis
+    comptesModel = model_infotaxis(tipusPloma, par, graella, tempsPas);   % el que el dron espera mesurar
+    probFuga = ones(graella.ny, graella.nx, graella.nz);                  % probabilitat de on es la fuga: uniforme
+    probFuga(zona_visible(celDron, graella)) = 0;
+    probFuga = probFuga / sum(probFuga(:));
 else
     % Sensors en creu: est, oest, nord, sud i, en 3D, un a sobre i un a sota
-    sensors = p.d * [1 0 0; -1 0 0; 0 1 0; 0 -1 0; 0 0 1; 0 0 -1];
-    sensors = sensors(1:4 + 2 * tresD, :);
-    G.gf    = [0 0 0];      % gradient filtrat [dc/dx dc/dy dc/dz]
-    G.sense = Inf;          % passos seguits sense detectar
-    G.dir   = randi(4);     % direccio horitzontal actual (fila de g.movs)
+    desplSensors = par.separacioSensors * [1 0 0; -1 0 0; 0 1 0; 0 -1 0; 0 0 1; 0 0 -1];
+    desplSensors = desplSensors(1:4 + 2 * tresD, :);
+    grad.filtrat           = [0 0 0];   % gradient suavitzat [dc/dx dc/dy dc/dz]
+    grad.passosSenseSenyal = Inf;       % passos seguits sense detectar
+    grad.centreZigZag      = celDron;   % cel.la al voltant de la qual busca quan no te senyal
+    grad.tram              = 0;         % numero de tram del zig-zag (0 = encara no ha comencat)
+    grad.desti             = celDron;   % cel.la on acaba el tram actual
+    mapaMesures = zeros(graella.ny, graella.nx, graella.nz);   % concentracio maxima mesurada a cada cel.la
 end
 
-N = p.maxPassos;
-traj    = nan(N + 1, 3);   traj(1, :) = [g.x(pos(2)) g.y(pos(1)) g.z(pos(3))];
-comptes = zeros(N, 1);
+trajectoria  = nan(par.maxPassos + 1, 3);       % posicio del dron [x y z] a cada pas
+trajectoria(1, :) = [graella.x(celDron(2)) graella.y(celDron(1)) graella.z(celDron(3))];
+concMesurada = zeros(par.maxPassos, 1);         % concentracio mesurada a cada pas
 trobada = false;
 
-% --- Figura ---
-if mostrar
-    r = traj(1, :);
-    fig = figure('Color', 'w', 'Name', 'Dron: cerca de l''origen d''una fuga', ...
-                 'Units', 'normalized', 'Position', [0.05 0.15 0.9 0.65]);
-    colormap(flipud(hot));
-    % Esquerra: la realitat. Al terra es pinta la ploma a l'alcada del dron.
-    subplot('Position', [0.05 0.12 0.42 0.76]);
-    hPloma = surf(g.x, g.y, zeros(g.Ny, g.Nx), log10(concentracio(pl, p, g.X, g.Y, r(3)) + 1e-3), ...
-                  'EdgeColor', 'none', 'FaceColor', 'interp');
-    hold on;  caxis([-2 2.5]);
-    plot3(p.font(1) * [1 1], p.font(2) * [1 1], [0 p.font(3)], 'g-', 'LineWidth', 1.5);
-    plot3(p.font(1), p.font(2), p.font(3), 'p', 'MarkerSize', 16, 'MarkerFaceColor', 'g', 'MarkerEdgeColor', 'k');
-    hTraj = plot3(r(1), r(2), r(3), 'b-', 'LineWidth', 1.5);
-    hPal  = plot3(r(1) * [1 1], r(2) * [1 1], [0 r(3)], 'k-');
-    hDron = plot3(r(1), r(2), r(3), 'o', 'MarkerSize', 10, 'MarkerFaceColor', 'c', 'MarkerEdgeColor', 'k');
-    axis([0 p.Lx 0 p.Ly 0 p.Lz]);
-    xlabel('x (m)');  ylabel('y (m)');  zlabel('z (m)');
-    if tresD
-        daspect([1 1 0.25]);  view(-30, 35);  grid on;
-    else
-        daspect([1 1 1]);  view(2);  grid off;
-    end
-    hTit = title('');
-    % Dreta: el que sap el dron
-    subplot('Position', [0.55 0.12 0.42 0.76]);
-    if infotaxis
-        hP = imagesc(g.x, g.y, sum(P, 3) / max(max(sum(P, 3))));
-        set(gca, 'YDir', 'normal');
-        axis equal;  axis([0 p.Lx 0 p.Ly]);  caxis([0 1]);
-        hold on;
-        hDron2 = plot(r(1), r(2), 'o', 'MarkerSize', 10, 'MarkerFaceColor', 'c', 'MarkerEdgeColor', 'k');
-        xlabel('x (m)');  ylabel('y (m)');
-        title('El que creu el dron: probabilitat de on es la fuga (vista des de dalt)');
-    else
-        hK = plot(0, 0, 'r-');
-        xlabel('Temps (s)');  grid on;
-        title('Comptes dels sensors');
-    end
+if mostrarAnimacio
+    fig = crear_figura(par, graella, tresD, usaInfotaxis);
 end
 
 %% ============================== BUCLE ==============================
-for n = 1:N
-    r = traj(n, :);                          % posicio del dron [x y z] (m)
+for pas = 1:par.maxPassos
+    posDron = trajectoria(pas, :);              % posicio del dron [x y z] (m)
 
     % 1. El dron mesura i decideix on va
-    if infotaxis
-        k = poisson(dt * (p.sens * concentracio(pl, p, r(1), r(2), r(3)) + p.fons));
-        P = infotaxis_actualitzar(P, K, pos, k, g);
-        [mov, estat] = infotaxis_decidir(P, K, pos, g, p.bins);
+    if usaInfotaxis
+        concReal = concentracio(ploma, par, posDron(1), posDron(2), posDron(3));
+        comptes  = poisson_aleatori(tempsPas * (par.sensibilitat * concReal + par.fonsSensor));
+        probFuga = infotaxis_actualitzar(probFuga, comptesModel, celDron, comptes, graella);
+        [moviment, queFa] = infotaxis_decidir(probFuga, comptesModel, celDron, graella, par.intervalsComptes);
     else
-        s = r + sensors;
-        k = poisson(dt * (p.sens * concentracio(pl, p, s(:, 1), s(:, 2), s(:, 3)) + p.fons));
-        [mov, estat, G] = gradient_decidir(G, k, pos, g, p, dt);
+        posSensors = posDron + desplSensors;
+        concReal = concentracio(ploma, par, posSensors(:, 1), posSensors(:, 2), posSensors(:, 3));
+        comptes  = poisson_aleatori(tempsPas * (par.sensibilitat * concReal + par.fonsSensor));
+        [moviment, queFa, grad] = gradient_decidir(grad, comptes, celDron, graella, par, tempsPas);
     end
-    comptes(n) = sum(k);
+    % Concentracio que el dron dedueix dels comptes (mitjana dels sensors)
+    concMesurada(pas) = mean(max(comptes / tempsPas - par.fonsSensor, 0) / par.sensibilitat);
+    if ~usaInfotaxis
+        mapaMesures(celDron(1), celDron(2), celDron(3)) = ...
+            max(mapaMesures(celDron(1), celDron(2), celDron(3)), concMesurada(pas));
+    end
 
     % 2. El dron es mou a una cel.la veina (o es queda quiet)
-    pos = pos + mov;
-    r = [g.x(pos(2)) g.y(pos(1)) g.z(pos(3))];
-    traj(n + 1, :) = r;
+    celDron = celDron + moviment;
+    posDron = [graella.x(celDron(2)) graella.y(celDron(1)) graella.z(celDron(3))];
+    trajectoria(pas + 1, :) = posDron;
     % La fuga es troba si es a tocar (bloc de 3 x 3 cel.les) i a la mateixa alcada
-    trobada = all(abs(pos(1:2) - celFont(1:2)) <= 1) && pos(3) == celFont(3);
+    trobada = all(abs(celDron(1:2) - celFuga(1:2)) <= 1) && celDron(3) == celFuga(3);
 
     % 3. La ploma evoluciona (la gaussiana no canvia)
-    if complexa
-        pl = avancar_ploma(pl, p, dt);
+    if plomaComplexa
+        ploma = avancar_ploma(ploma, par, tempsPas);
     end
 
     % 4. Dibuix
-    if mostrar && (trobada || mod(n, cadaN) == 0)
-        if ~ishandle(fig)
+    if mostrarAnimacio && (trobada || mod(pas, dibuixaCadaNPassos) == 0)
+        if ~ishandle(fig.finestra)
             break;
         end
-        set(hPloma, 'CData', log10(concentracio(pl, p, g.X, g.Y, r(3)) + 1e-3));
-        set(hTraj, 'XData', traj(1:n + 1, 1), 'YData', traj(1:n + 1, 2), 'ZData', traj(1:n + 1, 3));
-        set(hPal,  'XData', r(1) * [1 1], 'YData', r(2) * [1 1], 'ZData', [0 r(3)]);
-        set(hDron, 'XData', r(1), 'YData', r(2), 'ZData', r(3));
-        if infotaxis
-            set(hP, 'CData', sum(P, 3) / max(max(sum(P, 3))));
-            set(hDron2, 'XData', r(1), 'YData', r(2));
+        if usaInfotaxis
+            coneixement = probFuga;
         else
-            set(hK, 'XData', (1:n) * dt, 'YData', comptes(1:n));
+            coneixement = mapaMesures;
         end
-        set(hTit, 'String', {sprintf('Ploma %s %s | t = %.0f s | alcada %.0f m | %s', ...
-                                     tipusPloma, dimensio, n * dt, r(3), estat), ...
-                             'Colors: concentracio a l''alcada del dron'});
-        drawnow;
+        titol = sprintf('%s | ploma %s | t = %.0f s | alcada %.0f m | %s', ...
+                        upper(dimensio), tipusPloma, pas * tempsPas, posDron(3), queFa);
+        actualitzar_figura(fig, par, graella, ploma, trajectoria(1:pas + 1, :), ...
+                           coneixement, concMesurada(1:pas), tempsPas, titol);
     end
     if trobada
         break;
@@ -216,299 +189,451 @@ for n = 1:N
 end
 
 %% ============================= RESULTAT =============================
-recorregut = sum(sqrt(sum(diff(traj(1:n + 1, :)).^2, 2)));
+recorregut = sum(sqrt(sum(diff(trajectoria(1:pas + 1, :)).^2, 2)));
 if trobada
-    txt = sprintf('FONT TROBADA en %.0f s (%.0f m recorreguts)', n * dt, recorregut);
+    resultat = sprintf('FUGA TROBADA en %.0f s (%.0f m recorreguts)', pas * tempsPas, recorregut);
 else
-    txt = sprintf('Font NO trobada en %.0f s (distancia final %.0f m)', n * dt, norm(traj(n + 1, :) - p.font));
+    resultat = sprintf('Fuga NO trobada en %.0f s (distancia final %.0f m)', ...
+                       pas * tempsPas, norm(trajectoria(pas + 1, :) - par.posFuga));
 end
-fprintf('%s, ploma %s, algorisme %s: %s\n', upper(dimensio), tipusPloma, algorisme, txt);
-if mostrar && ishandle(fig)
-    set(hTit, 'String', txt);
+fprintf('%s, ploma %s, algorisme %s: %s\n', upper(dimensio), tipusPloma, algorisme, resultat);
+if mostrarAnimacio && ishandle(fig.finestra)
+    set(fig.titol, 'String', resultat);
 end
 end
 
-function c = cella(r, p, g)
-%CELLA  Cel.la [iy ix iz] de la graella que correspon a la posicio r = [x y z].
-[~, iz] = min(abs(g.z - r(3)));
-c = [round(r(2) / p.dx) + 1, round(r(1) / p.dx) + 1, iz];
+function cel = posicio_a_cella(pos, par, graella)
+%POSICIO_A_CELLA  Cel.la [iy ix iz] de la graella que correspon a la posicio [x y z].
+[~, iz] = min(abs(graella.z - pos(3)));
+cel = [round(pos(2) / par.midaCella) + 1, round(pos(1) / par.midaCella) + 1, iz];
 end
 
 %% ============================== PLOMA ==============================
 
-function c = concentracio(pl, p, x, y, z)
+function conc = concentracio(ploma, par, x, y, z)
 %CONCENTRACIO  Concentracio real de la ploma als punts (x, y, z).
-if strcmp(pl.tipus, 'gaussiana')
-    c = ploma_gaussiana(x - p.font(1), y - p.font(2), z, p.font(3), p);
+if strcmp(ploma.tipus, 'gaussiana')
+    conc = ploma_gaussiana(x - par.posFuga(1), y - par.posFuga(2), z, par.posFuga(3), par);
 else
     % Suma de tots els puffs. Cada puff es una campana de Gauss en 3D, mes
     % la seva imatge sota terra (el terra reflecteix el contaminant)
-    w  = pl.m ./ ((2 * pi)^1.5 * pl.s2h .* sqrt(pl.s2v));
-    dh = (x(:) - pl.x').^2 + (y(:) - pl.y').^2;             % (punts x puffs)
-    ez = exp(-(z(:) - pl.z').^2 ./ (2 * pl.s2v')) + exp(-(z(:) + pl.z').^2 ./ (2 * pl.s2v'));
-    c  = reshape((exp(-dh ./ (2 * pl.s2h')) .* ez) * w, size(x));
+    pes        = ploma.massa ./ ((2 * pi)^1.5 * ploma.sigma2H .* sqrt(ploma.sigma2V));
+    distHoritz = (x(:) - ploma.x').^2 + (y(:) - ploma.y').^2;             % (punts x puffs)
+    vertical   = exp(-(z(:) - ploma.z').^2 ./ (2 * ploma.sigma2V')) + ...
+                 exp(-(z(:) + ploma.z').^2 ./ (2 * ploma.sigma2V'));
+    conc = reshape((exp(-distHoritz ./ (2 * ploma.sigma2H')) .* vertical) * pes, size(x));
 end
 end
 
-function c = ploma_gaussiana(s, n, z, H, p)
-%PLOMA_GAUSSIANA  Ploma gaussiana estacionaria a una distancia s a favor
-%   del vent, n de traves i a l'alcada z, si la fuga es a l'alcada H:
+function conc = ploma_gaussiana(aFavorVent, deTraves, z, alcadaFuga, par)
+%PLOMA_GAUSSIANA  Ploma gaussiana estacionaria a una distancia aFavorVent
+%   de la fuga, deTraves al vent i a l'alcada z, si la fuga es a alcadaFuga:
 %
 %                Q              n^2             (z-H)^2            (z+H)^2
 %       c = ------------ exp(- ------) [ exp(- -------) + exp(- -------) ]
 %           2 pi U sy sz       2 sy^2           2 sz^2             2 sz^2
 %
-%   sy i sz (amplada i gruix de la ploma) creixen amb s segons les formules
-%   de Briggs (1973) per a la classe d'estabilitat D. L'ultim terme es la
-%   reflexio del contaminant al terra.
-z = z + zeros(size(s));
-c = zeros(size(s));
-m = s > -p.sigma0g;                          % a sobrevent no hi arriba res
-sm = max(s(m), 0);
-sy = 0.08 * sm ./ sqrt(1 + 1e-4 * sm);
-sz = 0.06 * sm ./ sqrt(1 + 1.5e-3 * sm);
-sy = sqrt(sy.^2 + p.sigma0g^2);              % la fuga te una mida inicial
-sz = sqrt(sz.^2 + p.sigma0g^2);
-vertical = exp(-(z(m) - H).^2 ./ (2 * sz.^2)) + exp(-(z(m) + H).^2 ./ (2 * sz.^2));
-c(m) = p.Qg ./ (2 * pi * p.Ug * sy .* sz) .* exp(-n(m).^2 ./ (2 * sy.^2)) .* vertical;
+%   sy i sz (amplada i gruix de la ploma) creixen amb la distancia segons
+%   les formules de Briggs (1973) per a la classe d'estabilitat D. L'ultim
+%   terme es la reflexio del contaminant al terra.
+deTraves = deTraves + zeros(size(aFavorVent));
+z        = z + zeros(size(aFavorVent));
+conc     = zeros(size(aFavorVent));
+arriba   = aFavorVent > -par.gaussMidaFuga;      % a sobrevent no hi arriba res
+dist     = max(aFavorVent(arriba), 0);
+amplada  = 0.08 * dist ./ sqrt(1 + 1e-4 * dist);
+gruix    = 0.06 * dist ./ sqrt(1 + 1.5e-3 * dist);
+amplada  = sqrt(amplada.^2 + par.gaussMidaFuga^2);   % la fuga te una mida inicial
+gruix    = sqrt(gruix.^2 + par.gaussMidaFuga^2);
+vertical = exp(-(z(arriba) - alcadaFuga).^2 ./ (2 * gruix.^2)) + ...
+           exp(-(z(arriba) + alcadaFuga).^2 ./ (2 * gruix.^2));
+conc(arriba) = par.gaussEmissio ./ (2 * pi * par.gaussVent * amplada .* gruix) ...
+               .* exp(-deTraves(arriba).^2 ./ (2 * amplada.^2)) .* vertical;
 end
 
-function pl = avancar_ploma(pl, p, dt)
+function ploma = avancar_ploma(ploma, par, tempsPas)
 %AVANCAR_PLOMA  Un pas de temps de la ploma complexa.
 % La direccio del vent oscil.la a l'atzar (proces d'Ornstein-Uhlenbeck)
-a = exp(-dt / p.Tmeandre);
-pl.th = pl.th * a + (p.sigmaMeandre * pi / 180) * sqrt(1 - a^2) * randn;
+memoria = exp(-tempsPas / par.meandreTemps);
+ploma.angleVent = ploma.angleVent * memoria + (par.meandreGraus * pi / 180) * sqrt(1 - memoria^2) * randn;
 % Els puffs es mouen amb el vent i a l'atzar, s'eixamplen i es van esvaint
-sh = sqrt(2 * p.DturbH * dt);
-sv = sqrt(2 * p.DturbV * dt);
-pl.x   = pl.x + p.U * cos(pl.th) * dt + sh * randn(size(pl.x));
-pl.y   = pl.y + p.U * sin(pl.th) * dt + sh * randn(size(pl.y));
-pl.z   = abs(pl.z + sv * randn(size(pl.z)));     % rebot al terra
-pl.s2h = pl.s2h + 2 * p.DpuffH * dt;
-pl.s2v = pl.s2v + 2 * p.DpuffV * dt;
-pl.m   = pl.m * exp(-dt / p.tau);
+saltH = sqrt(2 * par.turbulenciaH * tempsPas);
+saltV = sqrt(2 * par.turbulenciaV * tempsPas);
+ploma.x = ploma.x + par.vent * cos(ploma.angleVent) * tempsPas + saltH * randn(size(ploma.x));
+ploma.y = ploma.y + par.vent * sin(ploma.angleVent) * tempsPas + saltH * randn(size(ploma.y));
+ploma.z = abs(ploma.z + saltV * randn(size(ploma.z)));     % rebot al terra
+ploma.sigma2H = ploma.sigma2H + 2 * par.creixementH * tempsPas;
+ploma.sigma2V = ploma.sigma2V + 2 * par.creixementV * tempsPas;
+ploma.massa   = ploma.massa * exp(-tempsPas / par.tempsVida);
 % La fuga emet puffs nous
-nous = ones(round(p.puffsPerSeg * dt), 1);
-pl.x   = [pl.x;   p.font(1) * nous];
-pl.y   = [pl.y;   p.font(2) * nous];
-pl.z   = [pl.z;   p.font(3) * nous];
-pl.s2h = [pl.s2h; p.sigma0^2 * nous];
-pl.s2v = [pl.s2v; p.sigma0^2 * nous];
-pl.m   = [pl.m;   p.Q * dt / numel(nous) * nous];
+nous = ones(round(par.puffsPerSegon * tempsPas), 1);
+ploma.x = [ploma.x; par.posFuga(1) * nous];
+ploma.y = [ploma.y; par.posFuga(2) * nous];
+ploma.z = [ploma.z; par.posFuga(3) * nous];
+ploma.sigma2H = [ploma.sigma2H; par.midaPuff^2 * nous];
+ploma.sigma2V = [ploma.sigma2V; par.midaPuff^2 * nous];
+ploma.massa   = [ploma.massa;   par.emissio * tempsPas / numel(nous) * nous];
 % Eliminem els puffs que han sortit de la zona
-fora = pl.x > p.Lx + 60 | pl.x < -60 | pl.y > p.Ly + 60 | pl.y < -60;
-pl.x(fora) = [];    pl.y(fora) = [];    pl.z(fora) = [];
-pl.s2h(fora) = [];  pl.s2v(fora) = [];  pl.m(fora) = [];
+fora = ploma.x > par.midaX + 60 | ploma.x < -60 | ploma.y > par.midaY + 60 | ploma.y < -60;
+ploma.x(fora) = [];        ploma.y(fora) = [];        ploma.z(fora) = [];
+ploma.sigma2H(fora) = [];  ploma.sigma2V(fora) = [];  ploma.massa(fora) = [];
 end
 
-function k = poisson(mu)
-%POISSON  Nombres aleatoris de Poisson de mitjana mu (sense toolboxes).
-k = zeros(size(mu));
-for i = 1:numel(mu)
-    if mu(i) < 30
-        % Metode de Knuth: multiplica uniformes fins a baixar de exp(-mu)
-        u = rand;
-        while u > exp(-mu(i))
-            k(i) = k(i) + 1;
-            u = u * rand;
+function comptes = poisson_aleatori(mitjana)
+%POISSON_ALEATORI  Nombres aleatoris de Poisson amb la mitjana donada (sense toolboxes).
+comptes = zeros(size(mitjana));
+for i = 1:numel(mitjana)
+    if mitjana(i) < 30
+        % Metode de Knuth: multiplica uniformes fins a baixar de exp(-mitjana)
+        producte = rand;
+        while producte > exp(-mitjana(i))
+            comptes(i) = comptes(i) + 1;
+            producte = producte * rand;
         end
     else
-        k(i) = max(0, round(mu(i) + sqrt(mu(i)) * randn));   % aproximacio normal
+        comptes(i) = max(0, round(mitjana(i) + sqrt(mitjana(i)) * randn));   % aproximacio normal
     end
 end
 end
 
 %% ============================ INFOTAXIS ============================
 
-function K = model_infotaxis(tipusPloma, p, g, dt)
-%MODEL_INFOTAXIS  Model intern del dron: comptes esperats en un pas quan el
-%   dron es a l'alcada z(iz), la fuga a l'alcada z(i0) i el desplacament
-%   horitzontal entre tots dos es (DX, DY). Es una taula
-%   K(iy - iy0 + Ny, ix - ix0 + Nx, iz, i0).
+function comptesModel = model_infotaxis(tipusPloma, par, graella, tempsPas)
+%MODEL_INFOTAXIS  Model intern del dron: comptes que espera mesurar en un
+%   pas si ell es a l'alcada z(izDron), la fuga a l'alcada z(izFuga) i el
+%   desplacament horitzontal entre tots dos es (distX, distY). Es una taula
+%   comptesModel(iyDron - iyFuga + ny, ixDron - ixFuga + nx, izDron, izFuga).
 %
 %   - Ploma gaussiana: el dron en coneix la formula (model exacte).
 %   - Ploma complexa: solucio mitjana de l'equacio d'adveccio-difusio de
-%     l'article, amb difusivitats efectives Dh (horitzontal) i Dv
-%     (vertical) i una font imatge sota terra:
+%     l'article, amb difusivitats efectives horitzontal (Dh) i vertical
+%     (Dv) i una font imatge sota terra:
 %
-%       c = Q / (4 pi sqrt(Dh Dv)) exp(s U / 2Dh) [e^(-r1/lam)/r1 + e^(-r2/lam)/r2]
+%       c = Q / (4 pi sqrt(Dh Dv)) exp(x U / 2Dh) [e^(-r1/abast)/r1 + e^(-r2/abast)/r2]
 %
 %     r1 i r2 son les distancies a la fuga i a la seva imatge (amb z
 %     escalada per sqrt(Dh/Dv)). El dron NO coneix la turbulencia real.
-[DX, DY] = meshgrid((-(g.Nx - 1):(g.Nx - 1)) * p.dx, (-(g.Ny - 1):(g.Ny - 1)) * p.dx);
-Dh  = p.DturbH + p.DpuffH + (p.U * p.sigmaMeandre * pi / 180)^2 * p.Tmeandre;
-Dv  = p.DturbV + p.DpuffV;
-lam = sqrt(Dh * p.tau / (1 + p.U^2 * p.tau / (4 * Dh)));
-K = zeros(2 * g.Ny - 1, 2 * g.Nx - 1, g.Nz, g.Nz);
-for iz = 1:g.Nz
-    for i0 = 1:g.Nz
+[distX, distY] = meshgrid((-(graella.nx - 1):(graella.nx - 1)) * par.midaCella, ...
+                          (-(graella.ny - 1):(graella.ny - 1)) * par.midaCella);
+difusioH = par.turbulenciaH + par.creixementH + (par.vent * par.meandreGraus * pi / 180)^2 * par.meandreTemps;
+difusioV = par.turbulenciaV + par.creixementV;
+abast    = sqrt(difusioH * par.tempsVida / (1 + par.vent^2 * par.tempsVida / (4 * difusioH)));
+comptesModel = zeros(2 * graella.ny - 1, 2 * graella.nx - 1, graella.nz, graella.nz);
+for izDron = 1:graella.nz
+    for izFuga = 1:graella.nz
+        zDron = graella.z(izDron);
+        zFuga = graella.z(izFuga);
         if strcmp(tipusPloma, 'gaussiana')
-            c = ploma_gaussiana(DX, DY, g.z(iz), g.z(i0), p);
+            conc = ploma_gaussiana(distX, distY, zDron, zFuga, par);
         else
-            r1 = max(sqrt(DX.^2 + DY.^2 + Dh / Dv * (g.z(iz) - g.z(i0))^2), p.dx / 2);
-            r2 = max(sqrt(DX.^2 + DY.^2 + Dh / Dv * (g.z(iz) + g.z(i0))^2), p.dx / 2);
-            c  = p.Q / (4 * pi * sqrt(Dh * Dv)) * ...
-                 (exp(DX * p.U / (2 * Dh) - r1 / lam) ./ r1 + exp(DX * p.U / (2 * Dh) - r2 / lam) ./ r2);
+            distFuga   = max(sqrt(distX.^2 + distY.^2 + difusioH / difusioV * (zDron - zFuga)^2), par.midaCella / 2);
+            distImatge = max(sqrt(distX.^2 + distY.^2 + difusioH / difusioV * (zDron + zFuga)^2), par.midaCella / 2);
+            conc = par.emissio / (4 * pi * sqrt(difusioH * difusioV)) * ...
+                   (exp(distX * par.vent / (2 * difusioH) - distFuga / abast) ./ distFuga + ...
+                    exp(distX * par.vent / (2 * difusioH) - distImatge / abast) ./ distImatge);
         end
-        K(:, :, iz, i0) = dt * (p.sens * c + p.fons);
+        comptesModel(:, :, izDron, izFuga) = tempsPas * (par.sensibilitat * conc + par.fonsSensor);
     end
 end
 end
 
-function MU = mu_local(K, q, g)
-%MU_LOCAL  Comptes esperats a la cel.la q per a cada possible posicio de
-%   la fuga a la graella (matriu Ny x Nx x Nz).
-MU = reshape(K(q(1) + g.Ny - 1:-1:q(1), q(2) + g.Nx - 1:-1:q(2), q(3), :), g.Ny, g.Nx, g.Nz);
+function esperats = comptes_esperats(comptesModel, cel, graella)
+%COMPTES_ESPERATS  Comptes que el dron espera mesurar a la cel.la cel per a
+%   cada possible posicio de la fuga a la graella (matriu ny x nx x nz).
+esperats = reshape(comptesModel(cel(1) + graella.ny - 1:-1:cel(1), ...
+                                cel(2) + graella.nx - 1:-1:cel(2), cel(3), :), ...
+                   graella.ny, graella.nx, graella.nz);
 end
 
-function m = zona(q, g)
-%ZONA  Cel.les a tocar de q (bloc de 3 x 3 a la mateixa alcada): si la
-%   fuga hi es, el dron la veu.
-m = false(g.Ny, g.Nx, g.Nz);
-m(max(q(1) - 1, 1):min(q(1) + 1, g.Ny), max(q(2) - 1, 1):min(q(2) + 1, g.Nx), q(3)) = true;
+function visible = zona_visible(cel, graella)
+%ZONA_VISIBLE  Cel.les a tocar de cel (bloc de 3 x 3 a la mateixa alcada):
+%   si la fuga hi es, el dron la veu.
+visible = false(graella.ny, graella.nx, graella.nz);
+visible(max(cel(1) - 1, 1):min(cel(1) + 1, graella.ny), ...
+        max(cel(2) - 1, 1):min(cel(2) + 1, graella.nx), cel(3)) = true;
 end
 
-function S = entropia(P)
-%ENTROPIA  Entropia de Shannon S = -sum P ln P: mesura la incertesa.
-P = P(P > 0);
-S = -sum(P .* log(P));
+function incertesa = entropia(prob)
+%ENTROPIA  Entropia de Shannon -sum p ln p: mesura la incertesa d'un mapa
+%   de probabilitat (0 = se sap del cert on es la fuga).
+prob = prob(prob > 0);
+incertesa = -sum(prob .* log(prob));
 end
 
-function P = infotaxis_actualitzar(P, K, pos, k, g)
+function probFuga = infotaxis_actualitzar(probFuga, comptesModel, celDron, comptes, graella)
 %INFOTAXIS_ACTUALITZAR  Regla de Bayes (eq. 2 de l'article) despres de
-%   mesurar k comptes: P(r0) <- P(r0) * P(k | r0), amb P(k | r0) de Poisson.
-%   La zona que el dron veu queda descartada (la fuga no hi es).
-MU = mu_local(K, pos, g);
-Pn = P .* exp(-MU + k * log(MU) - gammaln(k + 1));
-Pn(zona(pos, g)) = 0;
-if sum(Pn(:)) > 0
-    P = Pn / sum(Pn(:));
+%   mesurar: cada possible posicio de la fuga es multiplica per la
+%   probabilitat (de Poisson) d'haver mesurat aquests comptes si la fuga
+%   fos alla. La zona que el dron veu queda descartada (la fuga no hi es).
+esperats = comptes_esperats(comptesModel, celDron, graella);
+probNova = probFuga .* exp(-esperats + comptes * log(esperats) - gammaln(comptes + 1));
+probNova(zona_visible(celDron, graella)) = 0;
+if sum(probNova(:)) > 0
+    probFuga = probNova / sum(probNova(:));
 else
-    P(zona(pos, g)) = 0;             % mesura incompatible amb el model: nomes descartem la zona
-    P = P / sum(P(:));
+    probFuga(zona_visible(celDron, graella)) = 0;    % mesura incompatible amb el model: nomes descartem la zona
+    probFuga = probFuga / sum(probFuga(:));
 end
 end
 
-function [mov, estat] = infotaxis_decidir(P, K, pos, g, bins)
+function [moviment, queFa] = infotaxis_decidir(probFuga, comptesModel, celDron, graella, intervals)
 %INFOTAXIS_DECIDIR  Tria el moviment que fa baixar mes l'entropia esperada
 %   (eq. 1 de l'article):
 %
-%       dS(r -> rj) = P(rj) [-S] + [1 - P(rj)] sum_k rho_k(rj) dS_k
+%       canvi(r -> rj) = P(rj) [-S] + [1 - P(rj)] sum_k rho_k(rj) dS_k
 %
 %   Primer terme: probabilitat de trobar la fuga a rj (l'entropia passa a 0).
-%   Segon terme: si no hi es, el dron rebra k comptes amb probabilitat rho_k
-%   i l'entropia canviara dS_k. Els comptes s'agrupen en intervals (bins).
-S0 = entropia(P);
-dS = Inf(7, 1);
-for j = 1:7
-    q = pos + g.movs(j, :);
-    if any(q < 1) || any(q > [g.Ny g.Nx g.Nz])
-        continue;                    % fora de la zona (en 2D, amunt i avall)
+%   Segon terme: si no hi es, el dron mesurara k comptes amb probabilitat
+%   rho_k i l'entropia canviara dS_k. Els comptes s'agrupen en intervals.
+entropiaAra   = entropia(probFuga);
+canviEntropia = Inf(7, 1);              % canvi esperat d'entropia per a cada moviment
+for m = 1:7
+    celNova = celDron + graella.moviments(m, :);
+    if any(celNova < 1) || any(celNova > [graella.ny graella.nx graella.nz])
+        continue;                       % fora de la zona (en 2D, amunt i avall)
     end
-    z  = zona(q, g);
-    Pj = sum(P(z));                  % probabilitat de trobar la fuga en arribar a q
-    Pp = P;
-    Pp(z) = 0;                       % distribucio si NO la troba
-    if sum(Pp(:)) <= 0
-        dS(j) = -S0;
+    visible    = zona_visible(celNova, graella);
+    probTrobar = sum(probFuga(visible));    % probabilitat de trobar la fuga en arribar-hi
+    probSiNo   = probFuga;
+    probSiNo(visible) = 0;                  % mapa de probabilitat si NO la troba
+    if sum(probSiNo(:)) <= 0
+        canviEntropia(m) = -entropiaAra;
         continue;
     end
-    Pp = Pp / sum(Pp(:));
-    MU = mu_local(K, q, g);
-    viu = Pp > 1e-15;                % nomes compten les posicions encara possibles (mes rapid)
-    Pp = Pp(viu);
-    MU = MU(viu);
+    probSiNo = probSiNo / sum(probSiNo(:));
+    esperats = comptes_esperats(comptesModel, celNova, graella);
+    possible = probSiNo > 1e-15;            % nomes compten les posicions encara possibles (mes rapid)
+    probSiNo = probSiNo(possible);
+    esperats = esperats(possible);
 
     % Recorrem k = 0, 1, 2... acumulant la llei de Poisson per intervals
-    canvi = 0;
-    acc   = zeros(size(MU));         % P(k < limit actual)
-    term  = exp(-MU);                % P(k) per al k actual
+    canviMesura   = 0;
+    probAcumulada = zeros(size(esperats));  % P(comptes < limit actual)
+    probK         = exp(-esperats);         % P(k comptes) per al k actual
     k = 0;
-    for ib = 1:numel(bins)
-        if ib < numel(bins)
-            L = zeros(size(MU));
-            while k < bins(ib + 1)
-                L    = L + term;
-                term = term .* MU / (k + 1);
-                k    = k + 1;
+    for i = 1:numel(intervals)
+        if i < numel(intervals)
+            probInterval = zeros(size(esperats));
+            while k < intervals(i + 1)
+                probInterval = probInterval + probK;
+                probK = probK .* esperats / (k + 1);
+                k = k + 1;
             end
-            acc = acc + L;
+            probAcumulada = probAcumulada + probInterval;
         else
-            L = max(1 - acc, 0);     % ultim interval: k >= bins(end)
+            probInterval = max(1 - probAcumulada, 0);   % ultim interval: k >= intervals(end)
         end
-        w   = Pp .* L;
-        rho = sum(w(:));             % probabilitat de mesurar comptes d'aquest interval
-        if rho > 1e-300
-            canvi = canvi + rho * (entropia(w / rho) - S0);
+        conjunta   = probSiNo .* probInterval;
+        probMesura = sum(conjunta(:));      % probabilitat de mesurar comptes d'aquest interval
+        if probMesura > 1e-300
+            canviMesura = canviMesura + probMesura * (entropia(conjunta / probMesura) - entropiaAra);
         end
     end
-    dS(j) = Pj * (-S0) + (1 - Pj) * canvi;
+    canviEntropia(m) = probTrobar * (-entropiaAra) + (1 - probTrobar) * canviMesura;
 end
 
-if min(dS) > -1e-6
+if min(canviEntropia) > -1e-6
     % Cap moviment aporta informacio (el dron ja "sap" on es la fuga):
     % vola directament cap al punt mes probable
-    estat = 'cap al punt mes probable';
-    [~, im] = max(P(:));
-    [iy, ix, iz] = ind2sub([g.Ny g.Nx g.Nz], im);
-    d = [iy ix iz] - pos;
-    [~, eix] = max(abs(d));
-    mov = [0 0 0];
-    mov(eix) = sign(d(eix));
+    queFa = 'cap al punt mes probable';
+    [~, mesProbable] = max(probFuga(:));
+    [iy, ix, iz] = ind2sub([graella.ny graella.nx graella.nz], mesProbable);
+    falta = [iy ix iz] - celDron;
+    [~, eix] = max(abs(falta));
+    moviment = [0 0 0];
+    moviment(eix) = sign(falta(eix));
 else
-    estat = 'infotaxis';
-    [~, j] = min(dS + 1e-10 * abs(S0) * rand(7, 1));    % desempat aleatori
-    mov = g.movs(j, :);
+    queFa = 'infotaxis';
+    [~, millor] = min(canviEntropia + 1e-10 * abs(entropiaAra) * rand(7, 1));    % desempat aleatori
+    moviment = graella.moviments(millor, :);
 end
 end
 
 %% ============================= GRADIENT =============================
 
-function [mov, estat, G] = gradient_decidir(G, k, pos, g, p, dt)
-%GRADIENT_DECIDIR  Estima el gradient amb els comptes k dels sensors (est,
+function [moviment, queFa, grad] = gradient_decidir(grad, comptes, celDron, graella, par, tempsPas)
+%GRADIENT_DECIDIR  Estima el gradient amb els comptes dels sensors (est,
 %   oest, nord, sud i, en 3D, amunt i avall) per diferencies finites
 %   centrades:
 %
 %       dc/dx ~ (cE - cO) / (2d),   dc/dy ~ (cN - cS) / (2d),   dc/dz ~ (cAmunt - cAvall) / (2d)
 %
-%   i el suavitza amb un filtre exponencial. Si hi ha senyal recent, el
-%   dron va cap on el gradient es mes gran; si no, explora a l'atzar.
-c = max(k(:)' / dt - p.fons, 0) / p.sens;        % concentracio estimada a cada sensor
-gNou = [0 0 0];
-gNou(1:numel(c) / 2) = (c(1:2:end) - c(2:2:end)) / (2 * p.d);
-if sum(k) >= p.llindar
-    G.sense = 0;
-    G.gf = p.alfa * G.gf + (1 - p.alfa) * gNou;
+%   i el suavitza amb un filtre exponencial. Si hi ha senyal recent, el dron
+%   va cap on el gradient es mes gran, pero mai vent avall (sap d'on ve el
+%   vent, i la fuga sempre es vent amunt). Si perd el senyal, busca la
+%   ploma en zig-zag de traves al vent al voltant d'on l'ha perduda (com
+%   fan les arnes): cada tram es el doble de llarg que l'anterior i, en
+%   3D, es fa a una alcada diferent.
+conc = max(comptes(:)' / tempsPas - par.fonsSensor, 0) / par.sensibilitat;   % concentracio a cada sensor
+gradientNou = [0 0 0];
+gradientNou(1:numel(conc) / 2) = (conc(1:2:end) - conc(2:2:end)) / (2 * par.separacioSensors);
+if sum(comptes) >= par.llindarDeteccio
+    grad.passosSenseSenyal = 0;
+    grad.filtrat = par.suavitzat * grad.filtrat + (1 - par.suavitzat) * gradientNou;
+    grad.centreZigZag = celDron;        % si perd el senyal, el buscara al voltant d'aqui
+    grad.tram = 0;
 else
-    G.sense = G.sense + 1;
-    if G.sense > p.memoria
-        G.gf = [0 0 0];                          % senyal perdut: oblida el gradient
+    grad.passosSenseSenyal = grad.passosSenseSenyal + 1;
+    if grad.passosSenseSenyal > par.passosMemoria
+        grad.filtrat = [0 0 0];         % senyal perdut: oblida el gradient
     end
 end
 
-q = pos + g.movs(1:6, :);                        % les 6 cel.les veines
-valid = all(q >= 1, 2) & q(:, 1) <= g.Ny & q(:, 2) <= g.Nx & q(:, 3) <= g.Nz;
-if G.sense <= p.memoria
-    estat = 'seguint el gradient';
-    proj = g.movs(1:6, [2 1 3]) * G.gf' + 1e-12 * rand(6, 1);   % projeccio del gradient sobre cada direccio
-    proj(~valid) = -Inf;
-    [~, j] = max(proj);
-    if j <= 4
-        G.dir = j;
-    end
+limits = [graella.ny graella.nx graella.nz];
+if grad.passosSenseSenyal <= par.passosMemoria
+    queFa = 'seguint el gradient';
+    veines    = celDron + graella.moviments(1:6, :);
+    dinsZona  = all(veines >= 1, 2) & all(veines <= limits, 2);
+    projeccio = graella.moviments(1:6, [2 1 3]) * grad.filtrat' + 1e-12 * rand(6, 1);   % gradient en cada direccio
+    projeccio(~dinsZona) = -Inf;
+    projeccio(1) = -Inf;                % mai vent avall: la fuga sempre es vent amunt
+    [~, millor] = max(projeccio);
+    moviment = graella.moviments(millor, :);
 else
-    estat = 'explorant';
-    if rand < p.pGir
-        G.dir = mod(G.dir - 1 + 2 * randi(2) - 3, 4) + 1;     % gira 90 graus a esquerra o dreta
+    queFa = 'buscant la ploma en zig-zag';
+    if grad.tram == 0 || isequal(celDron, grad.desti)
+        % Tram nou: cap a l'altre costat, el doble de lluny i a una altra alcada
+        grad.tram = grad.tram + 1;
+        amplitud  = par.tramInicial * 2^(grad.tram - 1);
+        costat    = (-1)^grad.tram;
+        desti     = grad.centreZigZag + [costat * amplitud, 0, costat * floor(grad.tram / 2)];
+        grad.desti = min(max(desti, 1), limits);
     end
-    if ~valid(G.dir)
-        G.dir = mod(G.dir + 1, 4) + 1;                        % sortiria de la zona: mitja volta
-    end
-    j = G.dir;
-    vert = 4 + find(valid(5:6))';                             % moviments verticals possibles (cap en 2D)
-    if ~isempty(vert) && rand < p.pVert
-        j = vert(randi(numel(vert)));                         % de tant en tant canvia d'alcada
-    end
+    falta = grad.desti - celDron;       % cel.les que falten per arribar al final del tram
+    [~, eix] = max(abs(falta));
+    moviment = [0 0 0];
+    moviment(eix) = sign(falta(eix));
 end
-mov = g.movs(j, :);
+end
+
+%% ============================== FIGURA ==============================
+
+function fig = crear_figura(par, graella, tresD, usaInfotaxis)
+%CREAR_FIGURA  Crea la finestra amb tots els panells i en retorna els elements
+%   grafics, que despres s'actualitzen a actualitzar_figura:
+%     - escena real (ploma, fuga, dron i trajectoria) i, en 3D, vista lateral
+%     - el que sap el dron, vist des de dalt i, en 3D, de costat
+%     - concentracio mesurada al llarg del temps
+fig.finestra = figure('Color', 'w', 'Name', 'Dron: cerca de l''origen d''una fuga', ...
+                      'Units', 'normalized', 'Position', [0.03 0.08 0.94 0.84]);
+colormap(flipud(hot));
+fig.tresD = tresD;
+fig.usaInfotaxis = usaInfotaxis;
+if tresD
+    llocEscena = [0.05 0.44 0.42 0.48];  llocSaber = [0.56 0.56 0.40 0.36];  llocMesura = [0.56 0.07 0.40 0.14];
+else
+    llocEscena = [0.05 0.12 0.42 0.76];  llocSaber = [0.56 0.46 0.40 0.46];  llocMesura = [0.56 0.10 0.40 0.24];
+end
+if usaInfotaxis
+    titolSaber = 'El que creu el dron: probabilitat de on es la fuga';
+    escalaSaber = [0 1];
+else
+    titolSaber = 'El que sap el dron: concentracio que ha mesurat a cada lloc';
+    escalaSaber = [-2 2.5];
+end
+estilDron = {'o', 'MarkerSize', 10, 'MarkerFaceColor', 'c', 'MarkerEdgeColor', 'k'};
+estilFuga = {'p', 'MarkerSize', 16, 'MarkerFaceColor', 'g', 'MarkerEdgeColor', 'k'};
+
+% Escena real. Al terra es pinta la ploma a l'alcada del dron.
+subplot('Position', llocEscena);
+fig.terra = surf(graella.x, graella.y, zeros(graella.ny, graella.nx), zeros(graella.ny, graella.nx), ...
+                 'EdgeColor', 'none', 'FaceColor', 'interp');
+hold on;  caxis([-2 2.5]);
+plot3(par.posFuga(1) * [1 1], par.posFuga(2) * [1 1], [0 par.posFuga(3)], 'g-', 'LineWidth', 1.5);
+plot3(par.posFuga(1), par.posFuga(2), par.posFuga(3), estilFuga{:});
+fig.trajectoria = plot3(nan, nan, nan, 'b-', 'LineWidth', 1.5);
+fig.palDron     = plot3([nan nan], [nan nan], [nan nan], 'k-');     % linia del dron fins a terra
+fig.dron        = plot3(nan, nan, nan, estilDron{:});
+axis([0 par.midaX 0 par.midaY 0 par.alcadaMaxima]);
+xlabel('x (m)');  ylabel('y (m)');  zlabel('z (m)');
+if tresD
+    daspect([1 1 0.25]);  view(-30, 35);  grid on;
+else
+    daspect([1 1 1]);  view(2);  grid off;
+end
+fig.titol = title('');
+
+% El que sap el dron, vist des de dalt
+subplot('Position', llocSaber);
+fig.saberDalt = imagesc(graella.x, graella.y, zeros(graella.ny, graella.nx));
+set(gca, 'YDir', 'normal');
+axis equal;  axis([0 par.midaX 0 par.midaY]);  caxis(escalaSaber);
+hold on;
+fig.dronSaberDalt = plot(nan, nan, estilDron{:});
+xlabel('x (m)');  ylabel('y (m)');
+title([titolSaber ' (des de dalt)']);
+
+if tresD
+    % Vista lateral de l'escena: tall vertical de la ploma que passa pel dron
+    fig.zLateral = 0:par.alcadaMaxima;
+    [fig.XLateral, fig.ZLateral] = meshgrid(graella.x, fig.zLateral);
+    subplot('Position', [0.05 0.08 0.42 0.22]);
+    fig.tallLateral = imagesc(graella.x, fig.zLateral, zeros(size(fig.XLateral)));
+    set(gca, 'YDir', 'normal');
+    axis([0 par.midaX 0 par.alcadaMaxima]);  caxis([-2 2.5]);
+    hold on;
+    plot(par.posFuga(1), par.posFuga(3), estilFuga{:});
+    fig.trajLateral = plot(nan, nan, 'b-', 'LineWidth', 1.5);
+    fig.dronLateral = plot(nan, nan, estilDron{:});
+    xlabel('x (m)');  ylabel('z (m)');
+    title('Vista lateral: ploma en el pla vertical que passa pel dron');
+
+    % El que sap el dron, vist de costat
+    subplot('Position', [0.56 0.31 0.40 0.13]);
+    fig.saberCostat = imagesc(graella.x, graella.z, zeros(graella.nz, graella.nx));
+    set(gca, 'YDir', 'normal');
+    axis([0 par.midaX 0 par.alcadaMaxima + par.midaCella / 2]);  caxis(escalaSaber);
+    hold on;
+    fig.dronSaberCostat = plot(nan, nan, estilDron{:});
+    ylabel('z (m)');
+    title('El mateix, vist de costat');
+end
+
+% Concentracio mesurada al llarg del temps (escala logaritmica)
+subplot('Position', llocMesura);
+fig.mesura = plot(nan, nan, 'r-');
+set(gca, 'YScale', 'log');
+ylim([0.05 1000]);  grid on;
+xlabel('Temps (s)');
+title('Concentracio mesurada pel dron');
+end
+
+function actualitzar_figura(fig, par, graella, ploma, trajectoria, coneixement, concMesurada, tempsPas, titol)
+%ACTUALITZAR_FIGURA  Redibuixa tots els panells amb l'estat actual.
+%   coneixement es el que sap el dron (matriu ny x nx x nz): la
+%   probabilitat de on es la fuga (infotaxis) o la concentracio que ha
+%   mesurat a cada cel.la (gradient).
+posDron = trajectoria(end, :);
+
+% Escena real
+set(fig.terra, 'CData', log10(concentracio(ploma, par, graella.X, graella.Y, posDron(3)) + 1e-3));
+set(fig.trajectoria, 'XData', trajectoria(:, 1), 'YData', trajectoria(:, 2), 'ZData', trajectoria(:, 3));
+set(fig.palDron, 'XData', posDron(1) * [1 1], 'YData', posDron(2) * [1 1], 'ZData', [0 posDron(3)]);
+set(fig.dron, 'XData', posDron(1), 'YData', posDron(2), 'ZData', posDron(3));
+set(fig.titol, 'String', {titol, 'Colors del terra: concentracio a l''alcada del dron'});
+
+% El que sap el dron: des de dalt i de costat
+if fig.usaInfotaxis
+    saberDalt   = sum(coneixement, 3);                   % probabilitat sumada sobre totes les alcades
+    saberCostat = reshape(sum(coneixement, 1), graella.nx, graella.nz)';   % ... i sobre totes les y
+    saberDalt   = saberDalt / max(saberDalt(:));
+    saberCostat = saberCostat / max(saberCostat(:));
+else
+    saberDalt   = log10(max(coneixement, [], 3) + 1e-3);
+    saberCostat = log10(reshape(max(coneixement, [], 1), graella.nx, graella.nz)' + 1e-3);
+end
+set(fig.saberDalt, 'CData', saberDalt);
+set(fig.dronSaberDalt, 'XData', posDron(1), 'YData', posDron(2));
+
+if fig.tresD
+    set(fig.tallLateral, 'CData', log10(concentracio(ploma, par, fig.XLateral, posDron(2), fig.ZLateral) + 1e-3));
+    set(fig.trajLateral, 'XData', trajectoria(:, 1), 'YData', trajectoria(:, 3));
+    set(fig.dronLateral, 'XData', posDron(1), 'YData', posDron(3));
+    set(fig.saberCostat, 'CData', saberCostat);
+    set(fig.dronSaberCostat, 'XData', posDron(1), 'YData', posDron(3));
+end
+
+% Concentracio mesurada (els zeros es dibuixen a la part de baix de l'escala)
+set(fig.mesura, 'XData', (1:numel(concMesurada)) * tempsPas, 'YData', max(concMesurada, 0.05));
+drawnow;
 end
