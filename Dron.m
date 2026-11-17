@@ -1,4 +1,4 @@
-classdef Dron
+classdef Dron < handle
 %DRON  El dron: els seus parametres, el seu sensor i els algorismes de cerca.
 %
 %   El dron NO sap on es la fuga: nomes sap el que llegeix el seu sensor.
@@ -10,19 +10,126 @@ classdef Dron
 %     'gradient'   Va cap on la concentracio augmenta. Si perd el senyal,
 %                  busca la ploma en zig-zag de traves al vent.
 %
-%   Aquest fitxer nomes agrupa funcions. Es fan servir aixi:
+%   Exemple:
+%       par  = Dron.parametres();                                % valors per defecte
+%       dron = Dron('infotaxis', '3d', escenari, par, ploma);    % constructor
+%       dron.pas(ploma);                     % mesura, decideix i es mou
+%       dron.veuFuga(posFuga)                % true si ja l'ha trobada
 %
-%       par  = Dron.parametres();                                 % valors per defecte
-%       dron = Dron.crear('infotaxis', '3d', escenari, par, ploma);
-%       dron = Dron.pas(dron, ploma);           % mesura, decideix i es mou
-%       Dron.veu_fuga(dron, posFuga)            % true si ja l'ha trobada
-%
-%   La variable "dron" es una struct amb tot el que cal saber del dron:
-%   on es, el seu mapa, que esta fent...
+%   Com a Java: "< handle" fa que els objectes es passin per referencia, i
+%   el primer argument dels metodes (obj) fa el paper de "this".
 %
 %   El dron es mou per una graella de cel.les de mida par.midaCella: a cada
 %   pas va a una cel.la veina o es queda quiet. Una cel.la s'identifica pels
 %   seus indexs [iy ix iz] (fila, columna i alcada de les matrius).
+
+properties (SetAccess = private)     % es poden llegir des de fora pero no canviar
+    algorisme            % 'infotaxis' o 'gradient'
+    par                  % parametres (vegeu Dron.parametres)
+    dt                   % durada d'un pas (s)
+    maxPassos            % passos que permet l'autonomia
+    graella              % cel.les per on es mou (struct amb x, y, z, mida...)
+    cel                  % cel.la on es [iy ix iz]
+    pos                  % posicio on es [x y z] (m)
+    mapa                 % el que sap a cada cel.la: probabilitat de que hi sigui
+                         % la fuga (infotaxis) o concentracio maxima mesurada (gradient)
+    queFa = 'sortint'    % que esta fent, per mostrar-ho al dibuix
+    concMesurada = 0     % ultima concentracio mesurada
+end
+
+properties (Access = private)        % nomes els fa servir la propia classe
+    desplSensors         % on son els sensors respecte al centre del dron [dx dy dz]
+    model                % infotaxis: comptes esperats segons on son el dron i la fuga
+    % Nomes per a l'algorisme gradient:
+    gradientFiltrat = [0 0 0]  % gradient suavitzat [dc/dx dc/dy dc/dz]
+    passosSenseSenyal = Inf    % passos seguits sense detectar
+    centreZigZag               % cel.la on busca quan perd el senyal
+    tram = 0                   % tram del zig-zag (0 = no ha comencat)
+    destiTram                  % cel.la on acaba el tram actual
+end
+
+methods
+
+    function obj = Dron(algorisme, dimensio, escenari, par, ploma)
+    %DRON  Constructor: dron a punt de sortir de escenari.posInicialDron.
+    %   La ploma nomes es fa servir per construir el model de l'infotaxis
+    %   (el dron coneix el tipus de ploma i els seus parametres mitjans).
+        obj.algorisme = algorisme;
+        obj.par       = par;
+        obj.dt        = par.midaCella / par.velocitat;
+        obj.maxPassos = ceil(par.autonomia / obj.dt);
+
+        % Graella de cel.les per on es mou el dron
+        g.x = 0:par.midaCella:escenari.midaX;
+        g.y = 0:par.midaCella:escenari.midaY;
+        if strcmp(dimensio, '3d')
+            g.z = par.alcadaMinima:par.midaCella:par.alcadaMaxima;
+        else
+            g.z = escenari.posInicialDron(3);   % 2D: una sola alcada
+        end
+        g.mida = [numel(g.y) numel(g.x) numel(g.z)];   % [ny nx nz]
+        % Moviments possibles [diy dix diz]: est, nord, oest, sud, amunt, avall, quiet
+        g.moviments = [0 1 0; 1 0 0; 0 -1 0; -1 0 0; 0 0 1; 0 0 -1; 0 0 0];
+        % Quantes cel.les veu a cada costat [iy ix iz] (si la fuga hi es, la troba)
+        g.radiVisible = floor([par.radiDeteccio par.radiDeteccio par.radiDeteccioZ] / par.midaCella + 1e-9);
+        obj.graella = g;
+
+        % Cel.la de sortida: la mes propera a la posicio inicial
+        [~, iz] = min(abs(g.z - escenari.posInicialDron(3)));
+        obj.cel = [round(escenari.posInicialDron(2) / par.midaCella) + 1, ...
+                   round(escenari.posInicialDron(1) / par.midaCella) + 1, iz];
+        obj.pos = obj.posicio(obj.cel);
+
+        if strcmp(algorisme, 'infotaxis')
+            obj.desplSensors = [0 0 0];      % un sol sensor, al centre del dron
+            obj.model = obj.crearModel(ploma);
+            mapaInicial = ones(g.mida);      % la fuga pot ser a qualsevol lloc...
+            mapaInicial(obj.zonaVisible(obj.cel)) = 0;   % ... menys on ja veu
+            obj.mapa = mapaInicial / sum(mapaInicial(:));
+        else
+            % Sensors en creu: est, oest, nord, sud i, en 3D, a sobre i a sota
+            despl = par.separacioSensors * [1 0 0; -1 0 0; 0 1 0; 0 -1 0; 0 0 1; 0 0 -1];
+            obj.desplSensors = despl(1:4 + 2 * strcmp(dimensio, '3d'), :);
+            obj.mapa = zeros(g.mida);
+            obj.centreZigZag = obj.cel;
+            obj.destiTram = obj.cel;
+        end
+    end
+
+    function pas(obj, ploma)
+    %PAS  Un pas del dron: mesura, decideix on va i s'hi mou.
+        p = obj.par;
+
+        % 1. Mesura: comptes de cada sensor
+        posSensors = obj.pos + obj.desplSensors;
+        conc    = ploma.concentracio(posSensors(:, 1), posSensors(:, 2), posSensors(:, 3));
+        comptes = Dron.poissonAleatori(obj.dt * (p.sensibilitat * conc + p.fonsSensor));
+        % concentracio que el dron dedueix dels comptes (mitjana dels sensors)
+        obj.concMesurada = mean(max(comptes / obj.dt - p.fonsSensor, 0) / p.sensibilitat);
+
+        % 2. Decideix on va
+        if strcmp(obj.algorisme, 'infotaxis')
+            obj.infotaxisActualitzar(comptes);
+            moviment = obj.infotaxisDecidir();
+        else
+            c = obj.cel;
+            obj.mapa(c(1), c(2), c(3)) = max(obj.mapa(c(1), c(2), c(3)), obj.concMesurada);
+            moviment = obj.gradientDecidir(comptes);
+        end
+
+        % 3. Es mou a una cel.la veina (o es queda quiet)
+        obj.cel = obj.cel + moviment;
+        obj.pos = obj.posicio(obj.cel);
+    end
+
+    function trobada = veuFuga(obj, posFuga)
+    %VEUFUGA  true si la fuga es a tocar del dron: a menys de radiDeteccio
+    %   en x i en y, i a menys de radiDeteccioZ en alcada.
+        p = obj.par;
+        trobada = all(abs(obj.pos - posFuga) <= [p.radiDeteccio p.radiDeteccio p.radiDeteccioZ]);
+    end
+
+end
 
 methods (Static)
 
@@ -55,107 +162,21 @@ methods (Static)
         par.canviAlcadaZigZag = 5;    % canvi d'alcada entre trams del zig-zag (m, nomes en 3D)
     end
 
-    function dron = crear(algorisme, dimensio, escenari, par, ploma)
-    %CREAR  Dron a punt de sortir de escenari.posInicialDron.
-    %   algorisme: 'infotaxis' o 'gradient';  dimensio: '2d' o '3d'.
-    %   La ploma nomes es fa servir per construir el model de l'infotaxis
-    %   (el dron coneix el tipus de ploma i els seus parametres mitjans).
-        dron.algorisme = algorisme;
-        dron.par       = par;
-        dron.dt        = par.midaCella / par.velocitat;   % durada d'un pas (s)
-        dron.maxPassos = ceil(par.autonomia / dron.dt);    % passos que permet l'autonomia
-
-        % Graella de cel.les per on es mou el dron
-        g.x = 0:par.midaCella:escenari.midaX;
-        g.y = 0:par.midaCella:escenari.midaY;
-        if strcmp(dimensio, '3d')
-            g.z = par.alcadaMinima:par.midaCella:par.alcadaMaxima;
-        else
-            g.z = escenari.posInicialDron(3);   % 2D: una sola alcada
-        end
-        g.mida = [numel(g.y) numel(g.x) numel(g.z)];   % [ny nx nz]
-        % Moviments possibles [diy dix diz]: est, nord, oest, sud, amunt, avall, quiet
-        g.moviments = [0 1 0; 1 0 0; 0 -1 0; -1 0 0; 0 0 1; 0 0 -1; 0 0 0];
-        % Quantes cel.les veu a cada costat [iy ix iz] (si la fuga hi es, la troba)
-        g.radiVisible = floor([par.radiDeteccio par.radiDeteccio par.radiDeteccioZ] / par.midaCella + 1e-9);
-        dron.graella = g;
-
-        % On es el dron: cel.la mes propera a la posicio inicial
-        [~, iz]   = min(abs(g.z - escenari.posInicialDron(3)));
-        dron.cel  = [round(escenari.posInicialDron(2) / par.midaCella) + 1, ...
-                     round(escenari.posInicialDron(1) / par.midaCella) + 1, iz];
-        dron.pos  = Dron.posicio(dron);
-        dron.queFa = 'sortint';
-        dron.concMesurada = 0;               % ultima concentracio mesurada
-
-        % dron.mapa es el que sap el dron a cada cel.la de la graella
-        if strcmp(algorisme, 'infotaxis')
-            dron.desplSensors = [0 0 0];     % un sol sensor, al centre del dron
-            dron.model = Dron.model_infotaxis(dron, ploma);
-            dron.mapa  = ones(g.mida);       % probabilitat de que la fuga sigui a cada cel.la:
-            dron.mapa(Dron.zona_visible(dron, dron.cel)) = 0;   % igual a tot arreu menys on ja veu
-            dron.mapa  = dron.mapa / sum(dron.mapa(:));
-        else
-            % Sensors en creu: est, oest, nord, sud i, en 3D, a sobre i a sota
-            despl = par.separacioSensors * [1 0 0; -1 0 0; 0 1 0; 0 -1 0; 0 0 1; 0 0 -1];
-            dron.desplSensors = despl(1:4 + 2 * strcmp(dimensio, '3d'), :);
-            dron.mapa = zeros(g.mida);       % concentracio maxima mesurada a cada cel.la
-            dron.grad.filtrat           = [0 0 0];    % gradient suavitzat [dc/dx dc/dy dc/dz]
-            dron.grad.passosSenseSenyal = Inf;        % passos seguits sense detectar
-            dron.grad.centreZigZag      = dron.cel;   % on busca quan perd el senyal
-            dron.grad.tram              = 0;          % tram del zig-zag (0 = no ha comencat)
-            dron.grad.desti             = dron.cel;   % cel.la on acaba el tram actual
-        end
-    end
-
-    function dron = pas(dron, ploma)
-    %PAS  Un pas del dron: mesura, decideix on va i s'hi mou.
-        p = dron.par;
-
-        % 1. Mesura: comptes de cada sensor
-        posSensors = dron.pos + dron.desplSensors;
-        conc    = Ploma.concentracio(ploma, posSensors(:, 1), posSensors(:, 2), posSensors(:, 3));
-        comptes = Dron.poisson_aleatori(dron.dt * (p.sensibilitat * conc + p.fonsSensor));
-        % concentracio que el dron dedueix dels comptes (mitjana dels sensors)
-        dron.concMesurada = mean(max(comptes / dron.dt - p.fonsSensor, 0) / p.sensibilitat);
-
-        % 2. Decideix on va
-        if strcmp(dron.algorisme, 'infotaxis')
-            dron.mapa = Dron.infotaxis_actualitzar(dron, comptes);
-            [moviment, dron.queFa] = Dron.infotaxis_decidir(dron);
-        else
-            c = dron.cel;
-            dron.mapa(c(1), c(2), c(3)) = max(dron.mapa(c(1), c(2), c(3)), dron.concMesurada);
-            [moviment, dron] = Dron.gradient_decidir(dron, comptes);
-        end
-
-        % 3. Es mou a una cel.la veina (o es queda quiet)
-        dron.cel = dron.cel + moviment;
-        dron.pos = Dron.posicio(dron);
-    end
-
-    function trobada = veu_fuga(dron, posFuga)
-    %VEU_FUGA  true si la fuga es a tocar del dron: a menys de radiDeteccio
-    %   en x i en y, i a menys de radiDeteccioZ en alcada.
-        p = dron.par;
-        trobada = all(abs(dron.pos - posFuga) <= [p.radiDeteccio p.radiDeteccio p.radiDeteccioZ]);
-    end
-
 end
 
-methods (Static, Access = private)
+methods (Access = private)
 
     %% ------------------------------ EINES ------------------------------
 
-    function pos = posicio(dron)
-    %POSICIO  Posicio [x y z] (m) de la cel.la on es el dron.
-        g = dron.graella;
-        pos = [g.x(dron.cel(2)) g.y(dron.cel(1)) g.z(dron.cel(3))];
+    function pos = posicio(obj, cel)
+    %POSICIO  Posicio [x y z] (m) de la cel.la cel.
+        g = obj.graella;
+        pos = [g.x(cel(2)) g.y(cel(1)) g.z(cel(3))];
     end
 
-    function visible = zona_visible(dron, cel)
-    %ZONA_VISIBLE  Cel.les que el dron veu des de cel: si la fuga hi fos, la trobaria.
-        g = dron.graella;
+    function visible = zonaVisible(obj, cel)
+    %ZONAVISIBLE  Cel.les que el dron veu des de cel: si la fuga hi fos, la trobaria.
+        g = obj.graella;
         r = g.radiVisible;
         visible = false(g.mida);
         visible(max(cel(1) - r(1), 1):min(cel(1) + r(1), g.mida(1)), ...
@@ -163,79 +184,52 @@ methods (Static, Access = private)
                 max(cel(3) - r(3), 1):min(cel(3) + r(3), g.mida(3))) = true;
     end
 
-    function comptes = poisson_aleatori(mitjana)
-    %POISSON_ALEATORI  Nombres aleatoris de Poisson amb la mitjana donada
-    %   (sense necessitat de toolboxes).
-        comptes = zeros(size(mitjana));
-        for i = 1:numel(mitjana)
-            if mitjana(i) < 30
-                % Metode de Knuth: multiplica numeros a l'atzar fins a baixar de exp(-mitjana)
-                producte = rand;
-                while producte > exp(-mitjana(i))
-                    comptes(i) = comptes(i) + 1;
-                    producte = producte * rand;
-                end
-            else
-                comptes(i) = max(0, round(mitjana(i) + sqrt(mitjana(i)) * randn));   % aproximacio normal
-            end
-        end
-    end
-
     %% ---------------------------- INFOTAXIS ----------------------------
 
-    function model = model_infotaxis(dron, ploma)
-    %MODEL_INFOTAXIS  Comptes que el dron espera mesurar en un pas segons on
-    %   sigui ell i on sigui la fuga. Nomes depen de la distancia horitzontal
-    %   entre tots dos i de les dues alcades, aixi que es guarda en una taula:
+    function model = crearModel(obj, ploma)
+    %CREARMODEL  Comptes que el dron espera mesurar en un pas segons on sigui
+    %   ell i on sigui la fuga. Nomes depen de la distancia horitzontal entre
+    %   tots dos i de les dues alcades, aixi que es guarda en una taula:
     %       model(iyDron - iyFuga + ny, ixDron - ixFuga + nx, izDron, izFuga)
-        g  = dron.graella;
+        g  = obj.graella;
         ny = g.mida(1);  nx = g.mida(2);  nz = g.mida(3);
-        [dx, dy] = meshgrid((-(nx - 1):(nx - 1)) * dron.par.midaCella, ...
-                            (-(ny - 1):(ny - 1)) * dron.par.midaCella);
+        [dx, dy] = meshgrid((-(nx - 1):(nx - 1)) * obj.par.midaCella, ...
+                            (-(ny - 1):(ny - 1)) * obj.par.midaCella);
         model = zeros(2 * ny - 1, 2 * nx - 1, nz, nz);
         for izDron = 1:nz
             for izFuga = 1:nz
-                conc = Ploma.mitjana(ploma, dx, dy, g.z(izDron), g.z(izFuga));
-                model(:, :, izDron, izFuga) = dron.dt * (dron.par.sensibilitat * conc + dron.par.fonsSensor);
+                conc = ploma.mitjana(dx, dy, g.z(izDron), g.z(izFuga));
+                model(:, :, izDron, izFuga) = obj.dt * (obj.par.sensibilitat * conc + obj.par.fonsSensor);
             end
         end
     end
 
-    function esperats = comptes_esperats(dron, cel)
-    %COMPTES_ESPERATS  Comptes que el dron espera mesurar a la cel.la cel,
+    function esperats = comptesEsperats(obj, cel)
+    %COMPTESESPERATS  Comptes que el dron espera mesurar a la cel.la cel,
     %   per a cada possible posicio de la fuga (matriu de mida graella.mida).
-        ny = dron.graella.mida(1);  nx = dron.graella.mida(2);
-        esperats = reshape(dron.model(cel(1) + ny - 1:-1:cel(1), cel(2) + nx - 1:-1:cel(2), cel(3), :), ...
-                           dron.graella.mida);
+        ny = obj.graella.mida(1);  nx = obj.graella.mida(2);
+        esperats = reshape(obj.model(cel(1) + ny - 1:-1:cel(1), cel(2) + nx - 1:-1:cel(2), cel(3), :), ...
+                           obj.graella.mida);
     end
 
-    function S = entropia(prob)
-    %ENTROPIA  Entropia de Shannon, S = -sum p ln p: mesura la incertesa d'un
-    %   mapa de probabilitat (S = 0 vol dir que se sap del cert on es la fuga).
-        prob = prob(prob > 0);
-        S = -sum(prob .* log(prob));
-    end
-
-    function mapa = infotaxis_actualitzar(dron, comptes)
-    %INFOTAXIS_ACTUALITZAR  Regla de Bayes despres de mesurar: cada possible
+    function infotaxisActualitzar(obj, comptes)
+    %INFOTAXISACTUALITZAR  Regla de Bayes despres de mesurar: cada possible
     %   posicio de la fuga es multiplica per la probabilitat (de Poisson)
     %   d'haver mesurat aquests comptes si la fuga fos alla. La zona que el
     %   dron veu queda descartada (si la fuga hi fos, ja l'hauria trobada).
-        mapa     = dron.mapa;
-        visible  = Dron.zona_visible(dron, dron.cel);
-        esperats = Dron.comptes_esperats(dron, dron.cel);
-        nou = mapa .* exp(-esperats + comptes * log(esperats) - gammaln(comptes + 1));
+        visible  = obj.zonaVisible(obj.cel);
+        esperats = obj.comptesEsperats(obj.cel);
+        nou = obj.mapa .* exp(-esperats + comptes * log(esperats) - gammaln(comptes + 1));
         nou(visible) = 0;
-        if sum(nou(:)) > 0
-            mapa = nou / sum(nou(:));
-        else
-            mapa(visible) = 0;               % mesura que el model no explica: nomes descartem la zona
-            mapa = mapa / sum(mapa(:));
+        if sum(nou(:)) == 0                  % mesura que el model no explica:
+            nou = obj.mapa;                  % nomes descartem la zona visible
+            nou(visible) = 0;
         end
+        obj.mapa = nou / sum(nou(:));
     end
 
-    function [moviment, queFa] = infotaxis_decidir(dron)
-    %INFOTAXIS_DECIDIR  Tria el moviment que fa baixar mes l'entropia (la
+    function moviment = infotaxisDecidir(obj)
+    %INFOTAXISDECIDIR  Tria el moviment que fa baixar mes l'entropia (la
     %   incertesa) esperada. Per a cada cel.la veina rj:
     %
     %       canvi(rj) = P(rj) * (-S)  +  (1 - P(rj)) * sum_k rho_k(rj) * dS_k
@@ -243,16 +237,16 @@ methods (Static, Access = private)
     %   1r terme: amb probabilitat P(rj) hi troba la fuga (la incertesa passa a 0).
     %   2n terme: si no, mesurara k comptes amb probabilitat rho_k i la
     %   incertesa canviara dS_k. Els comptes s'agrupen en intervals.
-        g    = dron.graella;
-        prob = dron.mapa;
+        g    = obj.graella;
+        prob = obj.mapa;
         S    = Dron.entropia(prob);
         canvi = Inf(7, 1);                   % canvi esperat d'entropia de cada moviment
         for m = 1:7
-            celNova = dron.cel + g.moviments(m, :);
+            celNova = obj.cel + g.moviments(m, :);
             if any(celNova < 1) || any(celNova > g.mida)
                 continue;                    % fora de la zona (en 2D, amunt i avall)
             end
-            visible    = Dron.zona_visible(dron, celNova);
+            visible    = obj.zonaVisible(celNova);
             probTrobar = sum(prob(visible)); % probabilitat de trobar-hi la fuga
             probSiNo   = prob;               % mapa si NO la troba
             probSiNo(visible) = 0;
@@ -261,13 +255,13 @@ methods (Static, Access = private)
                 continue;
             end
             probSiNo = probSiNo / sum(probSiNo(:));
-            esperats = Dron.comptes_esperats(dron, celNova);
+            esperats = obj.comptesEsperats(celNova);
             possible = probSiNo > 1e-15;     % nomes les posicions encara possibles (mes rapid)
             probSiNo = probSiNo(possible);
             esperats = esperats(possible);
 
             % Recorrem k = 0, 1, 2... sumant la llei de Poisson interval a interval
-            intervals     = dron.par.intervalsComptes;
+            intervals     = obj.par.intervalsComptes;
             canviMesura   = 0;
             probAcumulada = zeros(size(esperats));   % P(comptes < inici de l'interval)
             probK         = exp(-esperats);          % P(k comptes) per al k actual
@@ -295,12 +289,12 @@ methods (Static, Access = private)
 
         if min(canvi) > -1e-6
             % Ja no pot aprendre res mes: va directe al punt mes probable
-            queFa = 'cap al punt mes probable';
+            obj.queFa = 'cap al punt mes probable';
             [~, idx] = max(prob(:));
             [iy, ix, iz] = ind2sub(g.mida, idx);
-            moviment = Dron.pas_cap_a(dron.cel, [iy ix iz]);
+            moviment = Dron.pasCapA(obj.cel, [iy ix iz]);
         else
-            queFa = 'infotaxis';
+            obj.queFa = 'infotaxis';
             [~, millor] = min(canvi + 1e-10 * abs(S) * rand(7, 1));   % desempat a l'atzar
             moviment = g.moviments(millor, :);
         end
@@ -308,8 +302,8 @@ methods (Static, Access = private)
 
     %% ----------------------------- GRADIENT ----------------------------
 
-    function [moviment, dron] = gradient_decidir(dron, comptes)
-    %GRADIENT_DECIDIR  Estima el gradient amb els sensors (est, oest, nord,
+    function moviment = gradientDecidir(obj, comptes)
+    %GRADIENTDECIDIR  Estima el gradient amb els sensors (est, oest, nord,
     %   sud i, en 3D, a sobre i a sota) per diferencies finites:
     %
     %       dc/dx ~ (cEst - cOest) / 2d,   dc/dy ~ (cNord - cSud) / 2d,   dc/dz ~ (cSobre - cSota) / 2d
@@ -319,52 +313,79 @@ methods (Static, Access = private)
     %   amunt). Si perd el senyal, busca la ploma en zig-zag de traves al vent
     %   al voltant d'on l'ha perduda (com fan les arnes): cada tram es el
     %   doble de llarg que l'anterior i, en 3D, a una altra alcada.
-        p  = dron.par;
-        g  = dron.graella;
-        gr = dron.grad;
-        conc = max(comptes(:)' / dron.dt - p.fonsSensor, 0) / p.sensibilitat;   % concentracio a cada sensor
+        p = obj.par;
+        g = obj.graella;
+        conc = max(comptes(:)' / obj.dt - p.fonsSensor, 0) / p.sensibilitat;   % concentracio a cada sensor
         gradientNou = [0 0 0];
         gradientNou(1:numel(conc) / 2) = (conc(1:2:end) - conc(2:2:end)) / (2 * p.separacioSensors);
-        passosMemoria = round(p.tempsMemoria / dron.dt);   % passos que recorda el senyal
+        passosMemoria = round(p.tempsMemoria / obj.dt);   % passos que recorda el senyal
 
-        if sum(comptes) >= p.llindarDeteccio * dron.dt
-            gr.passosSenseSenyal = 0;
-            gr.filtrat = p.suavitzat * gr.filtrat + (1 - p.suavitzat) * gradientNou;
-            gr.centreZigZag = dron.cel;      % si perd el senyal, el buscara al voltant d'aqui
-            gr.tram = 0;
+        if sum(comptes) >= p.llindarDeteccio * obj.dt
+            obj.passosSenseSenyal = 0;
+            obj.gradientFiltrat = p.suavitzat * obj.gradientFiltrat + (1 - p.suavitzat) * gradientNou;
+            obj.centreZigZag = obj.cel;      % si perd el senyal, el buscara al voltant d'aqui
+            obj.tram = 0;
         else
-            gr.passosSenseSenyal = gr.passosSenseSenyal + 1;
-            if gr.passosSenseSenyal > passosMemoria
-                gr.filtrat = [0 0 0];        % senyal perdut: oblida el gradient
+            obj.passosSenseSenyal = obj.passosSenseSenyal + 1;
+            if obj.passosSenseSenyal > passosMemoria
+                obj.gradientFiltrat = [0 0 0];   % senyal perdut: oblida el gradient
             end
         end
 
-        if gr.passosSenseSenyal <= passosMemoria
-            dron.queFa = 'seguint el gradient';
-            veines    = dron.cel + g.moviments(1:6, :);
+        if obj.passosSenseSenyal <= passosMemoria
+            obj.queFa = 'seguint el gradient';
+            veines    = obj.cel + g.moviments(1:6, :);
             dinsZona  = all(veines >= 1, 2) & all(veines <= g.mida, 2);
-            projeccio = g.moviments(1:6, [2 1 3]) * gr.filtrat' + 1e-12 * rand(6, 1);   % gradient en cada direccio
+            projeccio = g.moviments(1:6, [2 1 3]) * obj.gradientFiltrat' + 1e-12 * rand(6, 1);   % gradient en cada direccio
             projeccio(~dinsZona) = -Inf;
             projeccio(1) = -Inf;             % mai vent avall
             [~, millor] = max(projeccio);
             moviment = g.moviments(millor, :);
         else
-            dron.queFa = 'buscant la ploma en zig-zag';
-            if gr.tram == 0 || isequal(dron.cel, gr.desti)
+            obj.queFa = 'buscant la ploma en zig-zag';
+            if obj.tram == 0 || isequal(obj.cel, obj.destiTram)
                 % Tram nou: cap a l'altre costat, el doble de lluny i a una altra alcada
-                gr.tram  = gr.tram + 1;
-                amplitud = max(1, round(p.tramInicial / p.midaCella)) * 2^(gr.tram - 1);    % en cel.les
-                canviZ   = round(p.canviAlcadaZigZag / p.midaCella) * floor(gr.tram / 2);  % en cel.les
-                costat   = (-1)^gr.tram;
-                gr.desti = min(max(gr.centreZigZag + costat * [amplitud 0 canviZ], 1), g.mida);
+                obj.tram = obj.tram + 1;
+                amplitud = max(1, round(p.tramInicial / p.midaCella)) * 2^(obj.tram - 1);    % en cel.les
+                canviZ   = round(p.canviAlcadaZigZag / p.midaCella) * floor(obj.tram / 2);  % en cel.les
+                costat   = (-1)^obj.tram;
+                obj.destiTram = min(max(obj.centreZigZag + costat * [amplitud 0 canviZ], 1), g.mida);
             end
-            moviment = Dron.pas_cap_a(dron.cel, gr.desti);
+            moviment = Dron.pasCapA(obj.cel, obj.destiTram);
         end
-        dron.grad = gr;
     end
 
-    function moviment = pas_cap_a(cel, desti)
-    %PAS_CAP_A  Un pas cap a la cel.la desti, per l'eix on falta mes.
+end
+
+methods (Static, Access = private)
+
+    function comptes = poissonAleatori(mitjana)
+    %POISSONALEATORI  Nombres aleatoris de Poisson amb la mitjana donada
+    %   (sense necessitat de toolboxes).
+        comptes = zeros(size(mitjana));
+        for i = 1:numel(mitjana)
+            if mitjana(i) < 30
+                % Metode de Knuth: multiplica numeros a l'atzar fins a baixar de exp(-mitjana)
+                producte = rand;
+                while producte > exp(-mitjana(i))
+                    comptes(i) = comptes(i) + 1;
+                    producte = producte * rand;
+                end
+            else
+                comptes(i) = max(0, round(mitjana(i) + sqrt(mitjana(i)) * randn));   % aproximacio normal
+            end
+        end
+    end
+
+    function S = entropia(prob)
+    %ENTROPIA  Entropia de Shannon, S = -sum p ln p: mesura la incertesa d'un
+    %   mapa de probabilitat (S = 0 vol dir que se sap del cert on es la fuga).
+        prob = prob(prob > 0);
+        S = -sum(prob .* log(prob));
+    end
+
+    function moviment = pasCapA(cel, desti)
+    %PASCAPA  Un pas cap a la cel.la desti, per l'eix on falta mes.
         falta = desti - cel;
         [~, eix] = max(abs(falta));
         moviment = [0 0 0];

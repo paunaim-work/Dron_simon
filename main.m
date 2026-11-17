@@ -4,8 +4,8 @@ function main()
 %   Tria les opcions de sota i executa amb F5. El codi esta en 3 fitxers:
 %
 %     main.m   Aquest: opcions, escenari, simulacio i dibuix.
-%     Dron.m   El dron: els seus parametres, el sensor i els algorismes.
-%     Ploma.m  La ploma de contaminant (4 versions).
+%     Dron.m   Classe Dron: els seus parametres, el sensor i els algorismes.
+%     Ploma.m  Classe Ploma: la ploma de contaminant (4 versions).
 
 %% ============================== OPCIONS ==============================
 opcions.dimensio    = '3d';          % '2d' o '3d'
@@ -47,10 +47,10 @@ if strcmp(opcions.dimensio, '2d')
     escenari.posInicialDron(3) = escenari.posFuga(3);   % en 2D tot passa a l'alcada de la fuga
 end
 
-ploma = Ploma.crear(opcions.tipusPloma, opcions.dimensio, escenari, parPloma);
-dron  = Dron.crear(opcions.algorisme, opcions.dimensio, escenari, parDron, ploma);
+ploma = Ploma(opcions.tipusPloma, opcions.dimensio, escenari, parPloma);
+dron  = Dron(opcions.algorisme, opcions.dimensio, escenari, parDron, ploma);
 for i = 1:round(escenari.tempsPrevi / dron.dt)      % la fuga ja fa estona que emet
-    ploma = Ploma.avancar(ploma, dron.dt);
+    ploma.avancar(dron.dt);
 end
 
 trajectoria  = nan(dron.maxPassos + 1, 3);     % posicio del dron a cada pas
@@ -61,9 +61,9 @@ if opcions.animacio
 end
 
 for pas = 1:dron.maxPassos
-    dron  = Dron.pas(dron, ploma);                       % 1. el dron mesura, decideix i es mou
-    trobada = Dron.veu_fuga(dron, escenari.posFuga);     % 2. ha arribat a la fuga?
-    ploma = Ploma.avancar(ploma, dron.dt);               % 3. la ploma evoluciona
+    dron.pas(ploma);                             % 1. el dron mesura, decideix i es mou
+    trobada = dron.veuFuga(escenari.posFuga);    % 2. ha arribat a la fuga?
+    ploma.avancar(dron.dt);                      % 3. la ploma evoluciona
 
     trajectoria(pas + 1, :) = dron.pos;
     concMesurada(pas) = dron.concMesurada;
@@ -181,7 +181,7 @@ function actualitzar_figura(fig, ploma, dron, trajectoria, concMesurada, titol)
 p = dron.pos;
 
 % Escena real
-set(fig.terra, 'CData', log10(Ploma.concentracio(ploma, fig.X, fig.Y, p(3)) + 1e-3));
+set(fig.terra, 'CData', log10(ploma.concentracio(fig.X, fig.Y, p(3)) + 1e-3));
 set(fig.trajectoria, 'XData', trajectoria(:, 1), 'YData', trajectoria(:, 2), 'ZData', trajectoria(:, 3));
 set(fig.pal,  'XData', p(1) * [1 1], 'YData', p(2) * [1 1], 'ZData', [0 p(3)]);
 set(fig.dron, 'XData', p(1), 'YData', p(2), 'ZData', p(3));
@@ -189,7 +189,7 @@ set(fig.titol, 'String', {titol, 'Colors del terra: concentracio a l''alcada del
 
 % Vista lateral
 if fig.tresD
-    set(fig.lateral, 'CData', log10(Ploma.concentracio(ploma, dron.graella.x, p(2), fig.zLateral') + 1e-3));
+    set(fig.lateral, 'CData', log10(ploma.concentracio(dron.graella.x, p(2), fig.zLateral') + 1e-3));
     set(fig.trajLateral, 'XData', trajectoria(:, 1), 'YData', trajectoria(:, 3));
     set(fig.dronLateral, 'XData', p(1), 'YData', p(3));
 end
