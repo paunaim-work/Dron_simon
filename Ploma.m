@@ -1,157 +1,46 @@
-classdef Ploma < handle
-%PLOMA  La ploma de contaminant que surt de la fuga (4 versions).
+classdef Ploma
+%PLOMA  Genera la ploma de contaminant i la guarda en un fitxer .nc.
+%
+%   La ploma es una matriu de concentracions amb dimensio temporal:
+%
+%       camp.c(ix, iy, iz, it) = concentracio al punt (x(ix), y(iy), z(iz))
+%                                a l'instant t(it)
+%
+%   "camp" es una struct amb els eixos x, y, z, t (vectors), la matriu c i
+%   la posicio de la fuga posFuga. Es el mateix que hi ha dins del .nc.
 %
 %   Hi ha 4 versions, que surten de combinar dues opcions:
 %
-%     tipus     'gaussiana'  Estacionaria: no canvia amb el temps. Es la
-%                            formula classica de Pasquill-Gifford.
+%     tipus     'gaussiana'  Estacionaria: no canvia amb el temps (un sol
+%                            instant). Formula classica de Pasquill-Gifford.
 %               'complexa'   Turbulenta: la fuga emet "puffs" (nuvolets de
 %                            gas) que el vent s'emporta, s'eixamplen i es
 %                            van esvaint.
 %
-%     dimensio  '3d'         La concentracio depen de x, y i z.
-%               '2d'         Nomes es mira el pla horitzontal a l'alcada
-%                            de la fuga (la z s'ignora).
+%     dimensio  '3d'         Moltes alcades.
+%               '2d'         Una sola alcada: la de la fuga.
 %
-%   Exemple:
-%       par   = Ploma.parametres();                     % valors per defecte
-%       ploma = Ploma('complexa', '3d', escenari, par); % constructor
-%       ploma.avancar(dt);                              % passen dt segons
-%       c = ploma.concentracio(x, y, z);                % concentracio a (x, y, z)
+%   Aquesta classe no crea objectes: nomes agrupa funcions (com una classe
+%   de Java amb tot "static"). Exemple:
 %
-%   Com a Java: "< handle" fa que els objectes es passin per referencia, i
-%   el primer argument dels metodes (obj) fa el paper de "this".
+%       par  = Ploma.parametres();
+%       camp = Ploma.generar('complexa', '3d', escenari, par);
+%       Ploma.guardar(camp, 'ploma.nc');
+%       camp = Ploma.llegir('ploma.nc');
 %
 %   Unitats: metres i segons. El vent bufa cap a +x i el terra es z = 0.
-
-properties (SetAccess = private)     % es poden llegir des de fora pero no canviar
-    tipus                % 'gaussiana' o 'complexa'
-    dimensio             % '2d' o '3d'
-    posFuga              % [x y z] de la fuga (m)
-    zona                 % [midaX midaY]: fora d'aqui s'esborren els puffs (m)
-    par                  % parametres del tipus triat
-    angleVent = 0        % direccio del vent (rad); 0 = cap a +x
-    puffs                % puffs de la ploma complexa (struct: un valor per puff a cada camp)
-end
-
-methods
-
-    function obj = Ploma(tipus, dimensio, escenari, par)
-    %PLOMA  Constructor: ploma nova, just quan la fuga comenca a emetre.
-    %   escenari ha de tenir posFuga, midaX i midaY.
-        obj.tipus    = tipus;
-        obj.dimensio = dimensio;
-        obj.posFuga  = escenari.posFuga;
-        obj.zona     = [escenari.midaX escenari.midaY];
-        obj.par      = par.(tipus);          % nomes els parametres del tipus triat
-
-        buit = zeros(0, 1);                  % encara no hi ha cap puff
-        obj.puffs.x       = buit;            % posicio del centre (m)
-        obj.puffs.y       = buit;
-        obj.puffs.z       = buit;
-        obj.puffs.sigma2H = buit;            % mida^2 en horitzontal (m^2)
-        obj.puffs.sigma2V = buit;            % mida^2 en vertical (m^2)
-        obj.puffs.massa   = buit;            % quantitat de contaminant
-    end
-
-    function avancar(obj, dt)
-    %AVANCAR  Fa passar dt segons. La ploma gaussiana no canvia mai.
-        if strcmp(obj.tipus, 'gaussiana')
-            return;
-        end
-        p  = obj.par;
-        pf = obj.puffs;
-
-        % 1. La direccio del vent oscil.la a l'atzar: recorda una mica la
-        %    direccio d'abans i hi suma soroll (proces d'Ornstein-Uhlenbeck)
-        memoria = exp(-dt / p.meandreTemps);
-        obj.angleVent = memoria * obj.angleVent + ...
-                        (p.meandreGraus * pi / 180) * sqrt(1 - memoria^2) * randn;
-
-        % 2. Els puffs es mouen amb el vent i a l'atzar (turbulencia),
-        %    s'eixamplen i es van esvaint
-        saltH = sqrt(2 * p.turbulenciaH * dt);
-        saltV = sqrt(2 * p.turbulenciaV * dt);
-        pf.x = pf.x + p.vent * cos(obj.angleVent) * dt + saltH * randn(size(pf.x));
-        pf.y = pf.y + p.vent * sin(obj.angleVent) * dt + saltH * randn(size(pf.y));
-        pf.z = abs(pf.z + saltV * randn(size(pf.z)));     % abs: reboten al terra
-        pf.sigma2H = pf.sigma2H + 2 * p.creixementH * dt;
-        pf.sigma2V = pf.sigma2V + 2 * p.creixementV * dt;
-        pf.massa   = pf.massa * exp(-dt / p.tempsVida);
-
-        % 3. La fuga emet puffs nous (com a minim un a cada pas)
-        n = max(1, round(p.puffsPerSegon * dt));
-        u = ones(n, 1);
-        pf.x       = [pf.x;       obj.posFuga(1) * u];
-        pf.y       = [pf.y;       obj.posFuga(2) * u];
-        pf.z       = [pf.z;       obj.posFuga(3) * u];
-        pf.sigma2H = [pf.sigma2H; p.midaPuff^2 * u];
-        pf.sigma2V = [pf.sigma2V; p.midaPuff^2 * u];
-        pf.massa   = [pf.massa;   p.emissio * dt / n * u];
-
-        % 4. S'esborren els puffs que han sortit de la zona (amb 60 m de marge)
-        fora = pf.x < -60 | pf.x > obj.zona(1) + 60 | pf.y < -60 | pf.y > obj.zona(2) + 60;
-        pf.x(fora) = [];        pf.y(fora) = [];        pf.z(fora) = [];
-        pf.sigma2H(fora) = [];  pf.sigma2V(fora) = [];  pf.massa(fora) = [];
-
-        obj.puffs = pf;
-    end
-
-    function c = concentracio(obj, x, y, z)
-    %CONCENTRACIO  Concentracio real de la ploma als punts (x, y, z).
-    %   x, y i z poden ser numeros, vectors o matrius (de la mateixa mida).
-        zero = zeros(size(x + y + z));       % perque x, y i z tinguin la mateixa mida
-        x = x + zero;
-        y = y + zero;
-        z = z + zero;
-        if strcmp(obj.dimensio, '2d')
-            z(:) = obj.posFuga(3);           % 2D: sempre al pla de la fuga
-        end
-
-        if strcmp(obj.tipus, 'gaussiana')
-            c = obj.formulaGaussiana(x - obj.posFuga(1), y - obj.posFuga(2), z, obj.posFuga(3));
-        else
-            c = obj.sumaPuffs(x, y, z);
-        end
-    end
-
-    function c = mitjana(obj, dx, dy, zDron, zFuga)
-    %MITJANA  Concentracio MITJANA quan el dron es a (dx, dy) de la fuga, ell
-    %   a l'alcada zDron i la fuga a zFuga. L'infotaxis la fa servir com a
-    %   model: nomes depen del tipus de ploma i dels seus parametres, no
-    %   d'on es la fuga de veritat ni de la turbulencia d'aquell moment.
-    %
-    %   - Gaussiana: la mateixa formula (la ploma no canvia amb el temps).
-    %   - Complexa: solucio mitjana de l'equacio d'adveccio-difusio
-    %     (Vergassola et al., 2007). La turbulencia i el meandre del vent
-    %     es resumeixen en dues difusivitats (Dh en horitzontal i Dv en
-    %     vertical), i el terra es una fuga "imatge" sota terra:
-    %
-    %       c = Q / (4 pi sqrt(Dh Dv)) exp(dx U / 2Dh) [e^(-r1/abast)/r1 + e^(-r2/abast)/r2]
-    %
-    %     r1 i r2 son les distancies a la fuga i a la seva imatge (amb la
-    %     z escalada per sqrt(Dh/Dv)), i abast es fins on arriba la ploma.
-        if strcmp(obj.tipus, 'gaussiana')
-            c = obj.formulaGaussiana(dx, dy, zDron, zFuga);
-            return;
-        end
-        p  = obj.par;
-        Dh = p.turbulenciaH + p.creixementH + (p.vent * p.meandreGraus * pi / 180)^2 * p.meandreTemps;
-        Dv = p.turbulenciaV + p.creixementV;
-        abast = sqrt(Dh * p.tempsVida / (1 + p.vent^2 * p.tempsVida / (4 * Dh)));
-        r1 = max(sqrt(dx.^2 + dy.^2 + Dh / Dv * (zDron - zFuga)^2), p.midaPuff);   % mai mes a prop
-        r2 = max(sqrt(dx.^2 + dy.^2 + Dh / Dv * (zDron + zFuga)^2), p.midaPuff);   % que un puff
-        c = p.emissio / (4 * pi * sqrt(Dh * Dv)) * ...
-            (exp(dx * p.vent / (2 * Dh) - r1 / abast) ./ r1 + ...
-             exp(dx * p.vent / (2 * Dh) - r2 / abast) ./ r2);
-    end
-
-end
 
 methods (Static)
 
     function par = parametres()
-    %PARAMETRES  Valors per defecte dels parametres de cada tipus de ploma.
+    %PARAMETRES  Valors per defecte dels parametres de la ploma.
+
+        % Graella del fitxer (comuna a tots els tipus)
+        par.resolucio  = 5;       % distancia entre punts de la graella (m)
+        par.durada     = 1200;    % segons que es guarden (despres, es repeteix l'ultim instant)
+        par.cadaSegons = 5;       % es guarda un instant cada tants segons
+        par.tempsPrevi = 300;     % segons que fa que la fuga emet a l'instant t = 0
+        par.pasTemps   = 1;       % pas de temps per moure els puffs (s)
 
         % Ploma gaussiana
         par.gaussiana.emissio  = 5000;    % taxa d'emissio de la fuga
@@ -172,11 +61,86 @@ methods (Static)
         par.complexa.meandreTemps  = 40;    % temps tipic d'aquesta oscil.lacio (s)
     end
 
+    function camp = generar(tipus, dimensio, escenari, par)
+    %GENERAR  Genera la ploma i la retorna com a matriu amb dimensio temporal.
+    %   escenari ha de tenir midaX, midaY, midaZ i posFuga.
+        f = escenari.posFuga;
+        camp.x = 0:par.resolucio:escenari.midaX;
+        camp.y = 0:par.resolucio:escenari.midaY;
+        if strcmp(dimensio, '3d')
+            camp.z = 0:par.resolucio:escenari.midaZ;
+        else
+            camp.z = f(3);                   % 2D: nomes l'alcada de la fuga
+        end
+        camp.posFuga = f;
+
+        if strcmp(tipus, 'gaussiana')
+            camp.t = 0;                      % no canvia amb el temps: un sol instant
+            [X, Y, Z] = ndgrid(camp.x, camp.y, camp.z);
+            camp.c = single(Ploma.formulaGaussiana(X - f(1), Y - f(2), Z, f(3), par.gaussiana));
+        else
+            camp.t = 0:par.cadaSegons:par.durada;
+            camp.c = zeros(numel(camp.x), numel(camp.y), numel(camp.z), numel(camp.t), 'single');
+            estat  = Ploma.puffsInicials();
+            zona   = [escenari.midaX escenari.midaY];
+            % Abans de t = 0 la fuga ja fa estona que emet
+            for i = 1:round(par.tempsPrevi / par.pasTemps)
+                estat = Ploma.avancarPuffs(estat, f, zona, par.complexa, par.pasTemps);
+            end
+            % Es guarda un instant cada par.cadaSegons
+            for it = 1:numel(camp.t)
+                if it > 1
+                    for i = 1:round(par.cadaSegons / par.pasTemps)
+                        estat = Ploma.avancarPuffs(estat, f, zona, par.complexa, par.pasTemps);
+                    end
+                end
+                camp.c(:, :, :, it) = Ploma.sumaPuffs(estat, camp.x, camp.y, camp.z);
+            end
+        end
+        camp.c(camp.c < 1e-4) = 0;           % el sensor no ho nota, i aixi el fitxer ocupa molt menys
+    end
+
+    function guardar(camp, fitxer)
+    %GUARDAR  Guarda el camp en un fitxer .nc (NetCDF).
+        if exist(fitxer, 'file')
+            delete(fitxer);                  % nccreate no sobreescriu fitxers
+        end
+        n = size(camp.c);
+        n(end + 1:4) = 1;                    % [nx ny nz nt], encara que nz o nt siguin 1
+        nccreate(fitxer, 'x', 'Dimensions', {'x', n(1)});
+        nccreate(fitxer, 'y', 'Dimensions', {'y', n(2)});
+        nccreate(fitxer, 'z', 'Dimensions', {'z', n(3)});
+        nccreate(fitxer, 't', 'Dimensions', {'t', n(4)});
+        nccreate(fitxer, 'c', 'Dimensions', {'x', n(1), 'y', n(2), 'z', n(3), 't', n(4)}, ...
+                 'Datatype', 'single', 'DeflateLevel', 5);   % comprimit
+        ncwrite(fitxer, 'x', camp.x(:));         % (:) = com a columna
+        ncwrite(fitxer, 'y', camp.y(:));
+        ncwrite(fitxer, 'z', camp.z(:));
+        ncwrite(fitxer, 't', camp.t(:));
+        ncwrite(fitxer, 'c', camp.c);
+        ncwriteatt(fitxer, 'x', 'units', 'm');
+        ncwriteatt(fitxer, 'y', 'units', 'm');
+        ncwriteatt(fitxer, 'z', 'units', 'm');
+        ncwriteatt(fitxer, 't', 'units', 's');
+        ncwriteatt(fitxer, '/', 'posFuga', camp.posFuga);
+    end
+
+    function camp = llegir(fitxer)
+    %LLEGIR  Llegeix un camp d'un fitxer .nc (el que ha escrit guardar).
+        camp.x = ncread(fitxer, 'x')';
+        camp.y = ncread(fitxer, 'y')';
+        camp.z = ncread(fitxer, 'z')';
+        camp.t = ncread(fitxer, 't')';
+        camp.c = ncread(fitxer, 'c');
+        camp.posFuga = ncreadatt(fitxer, '/', 'posFuga');
+        camp.posFuga = camp.posFuga(:)';
+    end
+
 end
 
-methods (Access = private)
+methods (Static, Access = private)
 
-    function c = formulaGaussiana(obj, dx, dy, z, zFuga)
+    function c = formulaGaussiana(dx, dy, z, zFuga, p)
     %FORMULAGAUSSIANA  Ploma gaussiana a dx metres vent avall de la fuga,
     %   dy de traves al vent i a l'alcada z, amb la fuga a l'alcada H = zFuga:
     %
@@ -187,9 +151,6 @@ methods (Access = private)
     %   sy i sz (amplada i gruix de la ploma) creixen amb la distancia
     %   (formules de Briggs, 1973, atmosfera neutra). L'ultim terme es el
     %   contaminant que rebota al terra.
-        p  = obj.par;
-        dy = dy + zeros(size(dx));
-        z  = z  + zeros(size(dx));
         c  = zeros(size(dx));
         hi = dx > -p.midaFuga;               % vent amunt de la fuga no hi arriba res
         d  = max(dx(hi), 0);
@@ -199,15 +160,69 @@ methods (Access = private)
         c(hi) = p.emissio ./ (2 * pi * p.vent * sy .* sz) .* exp(-dy(hi).^2 ./ (2 * sy.^2)) .* vertical;
     end
 
-    function c = sumaPuffs(obj, x, y, z)
-    %SUMAPUFFS  Suma de tots els puffs. Cada puff es una campana de Gauss
-    %   en 3D, mes la seva imatge sota terra (el terra fa rebotar el gas).
-        pf       = obj.puffs;
-        pes      = pf.massa ./ ((2 * pi)^1.5 * pf.sigma2H .* sqrt(pf.sigma2V));   % alcada de cada campana
-        dist2    = (x(:) - pf.x').^2 + (y(:) - pf.y').^2;                        % (punts x puffs)
-        vertical = exp(-(z(:) - pf.z').^2 ./ (2 * pf.sigma2V')) + ...
-                   exp(-(z(:) + pf.z').^2 ./ (2 * pf.sigma2V'));
-        c = reshape((exp(-dist2 ./ (2 * pf.sigma2H')) .* vertical) * pes, size(x));
+    function estat = puffsInicials()
+    %PUFFSINICIALS  Estat de la ploma complexa abans que la fuga emeti res:
+    %   cap puff (un valor per puff a cada vector) i vent cap a +x.
+        buit = zeros(0, 1);
+        estat.x       = buit;                % posicio del centre de cada puff (m)
+        estat.y       = buit;
+        estat.z       = buit;
+        estat.sigma2H = buit;                % mida^2 en horitzontal (m^2)
+        estat.sigma2V = buit;                % mida^2 en vertical (m^2)
+        estat.massa   = buit;                % quantitat de contaminant
+        estat.angleVent = 0;                 % direccio del vent (rad); 0 = cap a +x
+    end
+
+    function e = avancarPuffs(e, posFuga, zona, p, dt)
+    %AVANCARPUFFS  Fa passar dt segons a la ploma complexa.
+
+        % 1. La direccio del vent oscil.la a l'atzar: recorda una mica la
+        %    direccio d'abans i hi suma soroll (proces d'Ornstein-Uhlenbeck)
+        memoria = exp(-dt / p.meandreTemps);
+        e.angleVent = memoria * e.angleVent + (p.meandreGraus * pi / 180) * sqrt(1 - memoria^2) * randn;
+
+        % 2. Els puffs es mouen amb el vent i a l'atzar (turbulencia),
+        %    s'eixamplen i es van esvaint
+        saltH = sqrt(2 * p.turbulenciaH * dt);
+        saltV = sqrt(2 * p.turbulenciaV * dt);
+        e.x = e.x + p.vent * cos(e.angleVent) * dt + saltH * randn(size(e.x));
+        e.y = e.y + p.vent * sin(e.angleVent) * dt + saltH * randn(size(e.y));
+        e.z = abs(e.z + saltV * randn(size(e.z)));       % abs: reboten al terra
+        e.sigma2H = e.sigma2H + 2 * p.creixementH * dt;
+        e.sigma2V = e.sigma2V + 2 * p.creixementV * dt;
+        e.massa   = e.massa * exp(-dt / p.tempsVida);
+
+        % 3. La fuga emet puffs nous (com a minim un a cada pas)
+        n = max(1, round(p.puffsPerSegon * dt));
+        u = ones(n, 1);
+        e.x       = [e.x;       posFuga(1) * u];
+        e.y       = [e.y;       posFuga(2) * u];
+        e.z       = [e.z;       posFuga(3) * u];
+        e.sigma2H = [e.sigma2H; p.midaPuff^2 * u];
+        e.sigma2V = [e.sigma2V; p.midaPuff^2 * u];
+        e.massa   = [e.massa;   p.emissio * dt / n * u];
+
+        % 4. S'esborren els puffs que han sortit de la zona (amb 60 m de marge)
+        fora = e.x < -60 | e.x > zona(1) + 60 | e.y < -60 | e.y > zona(2) + 60;
+        e.x(fora) = [];        e.y(fora) = [];        e.z(fora) = [];
+        e.sigma2H(fora) = [];  e.sigma2V(fora) = [];  e.massa(fora) = [];
+    end
+
+    function c = sumaPuffs(e, x, y, z)
+    %SUMAPUFFS  Concentracio de tots els puffs a la graella x, y, z
+    %   (resultat de mida [nx ny nz]). Cada puff es una campana de Gauss en
+    %   3D, mes la seva imatge sota terra (el terra fa rebotar el gas).
+    %   Truc: una campana 3D es el producte de tres campanes 1D (en x, en y
+    %   i en z), aixi que es pot calcular amb productes de matrius.
+        pes = e.massa ./ ((2 * pi)^1.5 * e.sigma2H .* sqrt(e.sigma2V));   % alcada de cada campana
+        gx  = exp(-(x(:) - e.x').^2 ./ (2 * e.sigma2H'));                  % (nx x puffs)
+        gy  = exp(-(y(:) - e.y').^2 ./ (2 * e.sigma2H'));                  % (ny x puffs)
+        gz  = exp(-(z(:) - e.z').^2 ./ (2 * e.sigma2V')) + ...
+              exp(-(z(:) + e.z').^2 ./ (2 * e.sigma2V'));                  % (nz x puffs)
+        c = zeros(numel(x), numel(y), numel(z));
+        for k = 1:numel(z)
+            c(:, :, k) = gx * ((pes .* gz(k, :)') .* gy');
+        end
     end
 
 end

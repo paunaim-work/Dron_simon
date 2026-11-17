@@ -11,10 +11,14 @@ classdef Dron < handle
 %                  busca la ploma en zig-zag de traves al vent.
 %
 %   Exemple:
-%       par  = Dron.parametres();                                % valors per defecte
-%       dron = Dron('infotaxis', '3d', escenari, par, ploma);    % constructor
-%       dron.pas(ploma);                     % mesura, decideix i es mou
+%       par  = Dron.parametres();                         % valors per defecte
+%       dron = Dron('infotaxis', '3d', escenari, par);    % constructor
+%       dron.pas(camp);                      % mesura, decideix i es mou
 %       dron.veuFuga(posFuga)                % true si ja l'ha trobada
+%
+%   "camp" es la ploma tal com surt del fitxer .nc (vegeu Ploma.llegir):
+%   eixos x, y, z, t i la matriu c(ix, iy, iz, it). El dron nomes en llegeix
+%   la concentracio als punts on te els sensors; no fa servir res mes de Ploma.m.
 %
 %   Com a Java: "< handle" fa que els objectes es passin per referencia, i
 %   el primer argument dels metodes (obj) fa el paper de "this".
@@ -31,7 +35,8 @@ properties (SetAccess = private)     % es poden llegir des de fora pero no canvi
     graella              % cel.les per on es mou (struct amb x, y, z, mida...)
     cel                  % cel.la on es [iy ix iz]
     pos                  % posicio on es [x y z] (m)
-    mapa                 % el que sap a cada cel.la: probabilitat de que hi sigui
+    temps = 0            % segons que fa que vola
+    mapa               % el que sap a cada cel.la: probabilitat de que hi sigui
                          % la fuga (infotaxis) o concentracio maxima mesurada (gradient)
     queFa = 'sortint'    % que esta fent, per mostrar-ho al dibuix
     concMesurada = 0     % ultima concentracio mesurada
@@ -50,10 +55,8 @@ end
 
 methods
 
-    function obj = Dron(algorisme, dimensio, escenari, par, ploma)
+    function obj = Dron(algorisme, dimensio, escenari, par)
     %DRON  Constructor: dron a punt de sortir de escenari.posInicialDron.
-    %   La ploma nomes es fa servir per construir el model de l'infotaxis
-    %   (el dron coneix el tipus de ploma i els seus parametres mitjans).
         obj.algorisme = algorisme;
         obj.par       = par;
         obj.dt        = par.midaCella / par.velocitat;
@@ -82,7 +85,7 @@ methods
 
         if strcmp(algorisme, 'infotaxis')
             obj.desplSensors = [0 0 0];      % un sol sensor, al centre del dron
-            obj.model = obj.crearModel(ploma);
+            obj.model = obj.crearModel();
             mapaInicial = ones(g.mida);      % la fuga pot ser a qualsevol lloc...
             mapaInicial(obj.zonaVisible(obj.cel)) = 0;   % ... menys on ja veu
             obj.mapa = mapaInicial / sum(mapaInicial(:));
@@ -96,13 +99,12 @@ methods
         end
     end
 
-    function pas(obj, ploma)
+    function pas(obj, camp)
     %PAS  Un pas del dron: mesura, decideix on va i s'hi mou.
         p = obj.par;
 
         % 1. Mesura: comptes de cada sensor
-        posSensors = obj.pos + obj.desplSensors;
-        conc    = ploma.concentracio(posSensors(:, 1), posSensors(:, 2), posSensors(:, 3));
+        conc    = Dron.llegirCamp(camp, obj.pos + obj.desplSensors, obj.temps);
         comptes = Dron.poissonAleatori(obj.dt * (p.sensibilitat * conc + p.fonsSensor));
         % concentracio que el dron dedueix dels comptes (mitjana dels sensors)
         obj.concMesurada = mean(max(comptes / obj.dt - p.fonsSensor, 0) / p.sensibilitat);
@@ -120,6 +122,7 @@ methods
         % 3. Es mou a una cel.la veina (o es queda quiet)
         obj.cel = obj.cel + moviment;
         obj.pos = obj.posicio(obj.cel);
+        obj.temps = obj.temps + obj.dt;
     end
 
     function trobada = veuFuga(obj, posFuga)
@@ -152,6 +155,10 @@ methods (Static)
 
         % Infotaxis
         par.intervalsComptes = [0 1 2 3 5 8 13 21 34 55 89];   % grups de comptes per planificar
+        % Model: com creu el dron que es la ploma de mitjana (vegeu concentracioModel).
+        % Ha de tenir model.tipus ('gaussiana' o 'complexa') i els parametres
+        % d'aquest tipus (els mateixos noms que a Ploma.parametres). Es posa des del main.
+        par.model = [];
 
         % Gradient
         par.separacioSensors  = 5;    % distancia dels sensors al centre del dron (m)
@@ -186,7 +193,7 @@ methods (Access = private)
 
     %% ---------------------------- INFOTAXIS ----------------------------
 
-    function model = crearModel(obj, ploma)
+    function model = crearModel(obj)
     %CREARMODEL  Comptes que el dron espera mesurar en un pas segons on sigui
     %   ell i on sigui la fuga. Nomes depen de la distancia horitzontal entre
     %   tots dos i de les dues alcades, aixi que es guarda en una taula:
@@ -198,9 +205,45 @@ methods (Access = private)
         model = zeros(2 * ny - 1, 2 * nx - 1, nz, nz);
         for izDron = 1:nz
             for izFuga = 1:nz
-                conc = ploma.mitjana(dx, dy, g.z(izDron), g.z(izFuga));
+                conc = obj.concentracioModel(dx, dy, g.z(izDron), g.z(izFuga));
                 model(:, :, izDron, izFuga) = obj.dt * (obj.par.sensibilitat * conc + obj.par.fonsSensor);
             end
+        end
+    end
+
+    function c = concentracioModel(obj, dx, dy, zDron, zFuga)
+    %CONCENTRACIOMODEL  Concentracio MITJANA que el dron creu que mesurara si
+    %   es a (dx, dy) de la fuga, ell a l'alcada zDron i la fuga a zFuga.
+    %   Es el "cap" del dron: no llegeix el .nc, nomes fa servir par.model.
+    %
+    %   - Gaussiana: la formula de la ploma gaussiana (vegeu Ploma.m).
+    %   - Complexa: solucio mitjana de l'equacio d'adveccio-difusio
+    %     (Vergassola et al., 2007). La turbulencia i el meandre del vent
+    %     es resumeixen en dues difusivitats (Dh en horitzontal i Dv en
+    %     vertical), i el terra es una fuga "imatge" sota terra:
+    %
+    %       c = Q / (4 pi sqrt(Dh Dv)) exp(dx U / 2Dh) [e^(-r1/abast)/r1 + e^(-r2/abast)/r2]
+    %
+    %     r1 i r2 son les distancies a la fuga i a la seva imatge (amb la
+    %     z escalada per sqrt(Dh/Dv)), i abast es fins on arriba la ploma.
+        m = obj.par.model;
+        if strcmp(m.tipus, 'gaussiana')
+            c  = zeros(size(dx));
+            hi = dx > -m.midaFuga;           % vent amunt de la fuga no hi arriba res
+            d  = max(dx(hi), 0);
+            sy = sqrt((0.08 * d ./ sqrt(1 + 1e-4   * d)).^2 + m.midaFuga^2);
+            sz = sqrt((0.06 * d ./ sqrt(1 + 1.5e-3 * d)).^2 + m.midaFuga^2);
+            vertical = exp(-(zDron - zFuga)^2 ./ (2 * sz.^2)) + exp(-(zDron + zFuga)^2 ./ (2 * sz.^2));
+            c(hi) = m.emissio ./ (2 * pi * m.vent * sy .* sz) .* exp(-dy(hi).^2 ./ (2 * sy.^2)) .* vertical;
+        else
+            Dh = m.turbulenciaH + m.creixementH + (m.vent * m.meandreGraus * pi / 180)^2 * m.meandreTemps;
+            Dv = m.turbulenciaV + m.creixementV;
+            abast = sqrt(Dh * m.tempsVida / (1 + m.vent^2 * m.tempsVida / (4 * Dh)));
+            r1 = max(sqrt(dx.^2 + dy.^2 + Dh / Dv * (zDron - zFuga)^2), m.midaPuff);   % mai mes a prop
+            r2 = max(sqrt(dx.^2 + dy.^2 + Dh / Dv * (zDron + zFuga)^2), m.midaPuff);   % que un puff
+            c = m.emissio / (4 * pi * sqrt(Dh * Dv)) * ...
+                (exp(dx * m.vent / (2 * Dh) - r1 / abast) ./ r1 + ...
+                 exp(dx * m.vent / (2 * Dh) - r2 / abast) ./ r2);
         end
     end
 
@@ -358,6 +401,29 @@ methods (Access = private)
 end
 
 methods (Static, Access = private)
+
+    function c = llegirCamp(camp, pos, t)
+    %LLEGIRCAMP  El que llegeixen els sensors: concentracio del camp (la
+    %   matriu del .nc) als punts pos (una fila [x y z] per sensor) a
+    %   l'instant t. Agafa el punt de la graella i l'instant mes propers:
+    %   - si t passa de l'ultim instant del fitxer, fa servir l'ultim (aixi
+    %     tambe funciona amb fitxers d'un sol instant);
+    %   - fora de la zona del fitxer, la concentracio es 0.
+        it = Dron.mesProper(camp.t, t);
+        c  = zeros(size(pos, 1), 1);
+        for i = 1:size(pos, 1)
+            x = pos(i, 1);  y = pos(i, 2);  z = pos(i, 3);
+            if x >= camp.x(1) && x <= camp.x(end) && y >= camp.y(1) && y <= camp.y(end)
+                c(i) = camp.c(Dron.mesProper(camp.x, x), Dron.mesProper(camp.y, y), ...
+                              Dron.mesProper(camp.z, z), it);
+            end
+        end
+    end
+
+    function i = mesProper(v, valor)
+    %MESPROPER  Index de l'element del vector v mes proper a valor.
+        [~, i] = min(abs(v - valor));
+    end
 
     function comptes = poissonAleatori(mitjana)
     %POISSONALEATORI  Nombres aleatoris de Poisson amb la mitjana donada
