@@ -22,18 +22,21 @@ tipusPloma         = 'complexa';    % 'gaussiana' o 'complexa'
 algorisme          = 'infotaxis';   % 'infotaxis' o 'gradient'
 llavor             = 1;             % mateix numero = mateixa simulacio ([] = cada cop diferent)
 mostrarAnimacio    = true;          % false = sense animacio (mes rapid)
-dibuixaCadaNPassos = 2;             % redibuixa la figura cada N passos
+dibuixaCadaSegons  = 2;             % redibuixa la figura cada N segons de simulacio
 
 %% ============================ PARAMETRES ============================
 % Unitats: metres i segons. El vent bufa cap a +x i el terra es z = 0.
 par.midaX = 400;                    % llargada de la zona de cerca (direccio del vent)
 par.midaY = 300;                    % amplada de la zona de cerca (de traves al vent)
-par.alcadaMaxima = 40;              % alcada maxima de vol (nomes en 3D; la minima es una cel.la)
+par.alcadaMaxima = 40;              % alcada maxima de vol (nomes en 3D)
+par.alcadaMinima = 5;               % alcada minima de vol (nomes en 3D)
 par.midaCella = 5;                  % mida de cel.la = el que avanca el dron a cada pas
 par.posFuga        = [60 150 10];   % on es la fuga [x y z] (el dron NO ho sap)
 par.posInicialDron = [340 215 30];  % d'on surt el dron [x y z] (en 2D, z = alcada de la fuga)
 par.velocitatDron  = 5;             % m/s
-par.maxPassos      = 2500;          % limit de passos (autonomia)
+par.autonomia      = 2500;          % temps maxim de vol (s)
+par.radiDeteccio   = 5;             % la fuga es troba si el dron hi es a menys d'aquesta distancia en x i en y (m)
+par.radiDeteccioZ  = 2;             % ... i a menys d'aquesta en alcada (m)
 
 % Sensor: comptador de deteccions (tipus Geiger).
 % Comptes en un pas ~ Poisson( tempsPas * (sensibilitat * concentracio + fons) )
@@ -49,7 +52,7 @@ par.gaussMidaFuga = 1;              % mida de la fuga (m)
 par.emissio       = 2000;           % taxa d'emissio
 par.vent          = 2;              % velocitat mitjana del vent (m/s)
 par.tempsVida     = 200;            % temps de vida del contaminant (s)
-par.puffsPerSegon = 2;              % puffs emesos per segon
+par.puffsPerSegon = 2;              % puffs emesos per segon (com a minim 1 a cada pas)
 par.midaPuff      = 1.5;            % mida inicial d'un puff (m)
 par.creixementH   = 0.4;            % rapidesa amb que s'eixampla un puff en horitzontal (m^2/s)
 par.creixementV   = 0.2;            % ... i en vertical (m^2/s)
@@ -64,9 +67,10 @@ par.intervalsComptes = [0 1 2 3 5 8 13 21 34 55 89];   % intervals de comptes pe
 % Gradient
 par.separacioSensors = 5;           % distancia dels sensors al centre del dron (m)
 par.suavitzat        = 0.6;         % suavitzat del gradient (0 = cap, 0.9 = molt)
-par.llindarDeteccio  = 2;           % comptes (suma dels sensors) per considerar que detecta
-par.passosMemoria    = 4;           % passos sense detectar abans de posar-se a buscar
-par.tramInicial      = 4;           % primer tram del zig-zag de cerca (cel.les); cada tram es el doble
+par.llindarDeteccio  = 2;           % comptes/s (suma dels sensors) per considerar que detecta
+par.tempsMemoria     = 4;           % segons sense detectar abans de posar-se a buscar
+par.tramInicial      = 20;          % primer tram del zig-zag de cerca (m); cada tram es el doble
+par.canviAlcadaZigZag = 5;          % canvi d'alcada entre trams del zig-zag (m, nomes en 3D)
 %% ====================================================================
 
 if ~isempty(llavor)
@@ -80,7 +84,7 @@ tresD         = strcmp(dimensio, '3d');
 graella.x = 0:par.midaCella:par.midaX;
 graella.y = 0:par.midaCella:par.midaY;
 if tresD
-    graella.z = par.midaCella:par.midaCella:par.alcadaMaxima;   % el dron no vola arran de terra
+    graella.z = par.alcadaMinima:par.midaCella:par.alcadaMaxima;   % el dron no vola arran de terra
 else
     graella.z = par.posFuga(3);                 % 2D: una sola alcada, la de la fuga
     par.posInicialDron(3) = par.posFuga(3);
@@ -92,6 +96,10 @@ graella.nz = numel(graella.z);
 % Moviments possibles [diy dix diz]: est, nord, oest, sud, amunt, avall, quiet
 graella.moviments = [0 1 0; 1 0 0; 0 -1 0; -1 0 0; 0 0 1; 0 0 -1; 0 0 0];
 tempsPas = par.midaCella / par.velocitatDron;   % durada d'un pas (s)
+
+maxPassos = ceil(par.autonomia / tempsPas);     % passos que permet l'autonomia
+% Quantes cel.les a cada costat [iy ix iz] veu el dron (amb cel.les de 5 m: [1 1 0])
+graella.radiVisible = floor([par.radiDeteccio par.radiDeteccio par.radiDeteccioZ] / par.midaCella + 1e-9);
 
 celFuga = posicio_a_cella(par.posFuga, par, graella);          % cel.la [iy ix iz] de la fuga
 celDron = posicio_a_cella(par.posInicialDron, par, graella);   % cel.la [iy ix iz] del dron
@@ -124,9 +132,9 @@ else
     mapaMesures = zeros(graella.ny, graella.nx, graella.nz);   % concentracio maxima mesurada a cada cel.la
 end
 
-trajectoria  = nan(par.maxPassos + 1, 3);       % posicio del dron [x y z] a cada pas
+trajectoria  = nan(maxPassos + 1, 3);       % posicio del dron [x y z] a cada pas
 trajectoria(1, :) = [graella.x(celDron(2)) graella.y(celDron(1)) graella.z(celDron(3))];
-concMesurada = zeros(par.maxPassos, 1);         % concentracio mesurada a cada pas
+concMesurada = zeros(maxPassos, 1);         % concentracio mesurada a cada pas
 trobada = false;
 
 if mostrarAnimacio
@@ -134,7 +142,7 @@ if mostrarAnimacio
 end
 
 %% ============================== BUCLE ==============================
-for pas = 1:par.maxPassos
+for pas = 1:maxPassos
     posDron = trajectoria(pas, :);              % posicio del dron [x y z] (m)
 
     % 1. El dron mesura i decideix on va
@@ -160,8 +168,8 @@ for pas = 1:par.maxPassos
     celDron = celDron + moviment;
     posDron = [graella.x(celDron(2)) graella.y(celDron(1)) graella.z(celDron(3))];
     trajectoria(pas + 1, :) = posDron;
-    % La fuga es troba si es a tocar (bloc de 3 x 3 cel.les) i a la mateixa alcada
-    trobada = all(abs(celDron(1:2) - celFuga(1:2)) <= 1) && celDron(3) == celFuga(3);
+    % La fuga es troba si es a tocar: a menys de radiDeteccio en x i y, i de radiDeteccioZ en alcada
+    trobada = all(abs(celDron - celFuga) <= graella.radiVisible);
 
     % 3. La ploma evoluciona (la gaussiana no canvia)
     if plomaComplexa
@@ -169,7 +177,7 @@ for pas = 1:par.maxPassos
     end
 
     % 4. Dibuix
-    if mostrarAnimacio && (trobada || mod(pas, dibuixaCadaNPassos) == 0)
+    if mostrarAnimacio && (trobada || mod(pas, max(1, round(dibuixaCadaSegons / tempsPas))) == 0)
         if ~ishandle(fig.finestra)
             break;
         end
@@ -265,8 +273,9 @@ ploma.z = abs(ploma.z + saltV * randn(size(ploma.z)));     % rebot al terra
 ploma.sigma2H = ploma.sigma2H + 2 * par.creixementH * tempsPas;
 ploma.sigma2V = ploma.sigma2V + 2 * par.creixementV * tempsPas;
 ploma.massa   = ploma.massa * exp(-tempsPas / par.tempsVida);
-% La fuga emet puffs nous
-nous = ones(round(par.puffsPerSegon * tempsPas), 1);
+% La fuga emet puffs nous: com a minim un a cada pas (amb passos curts,
+% round(puffsPerSegon * tempsPas) podria donar 0 i la fuga no emetria res)
+nous = ones(max(1, round(par.puffsPerSegon * tempsPas)), 1);
 ploma.x = [ploma.x; par.posFuga(1) * nous];
 ploma.y = [ploma.y; par.posFuga(2) * nous];
 ploma.z = [ploma.z; par.posFuga(3) * nous];
@@ -346,11 +355,13 @@ esperats = reshape(comptesModel(cel(1) + graella.ny - 1:-1:cel(1), ...
 end
 
 function visible = zona_visible(cel, graella)
-%ZONA_VISIBLE  Cel.les a tocar de cel (bloc de 3 x 3 a la mateixa alcada):
-%   si la fuga hi es, el dron la veu.
+%ZONA_VISIBLE  Cel.les a tocar de cel (a menys de graella.radiVisible
+%   cel.les en cada eix): si la fuga hi es, el dron la veu.
+r = graella.radiVisible;
 visible = false(graella.ny, graella.nx, graella.nz);
-visible(max(cel(1) - 1, 1):min(cel(1) + 1, graella.ny), ...
-        max(cel(2) - 1, 1):min(cel(2) + 1, graella.nx), cel(3)) = true;
+visible(max(cel(1) - r(1), 1):min(cel(1) + r(1), graella.ny), ...
+        max(cel(2) - r(2), 1):min(cel(2) + r(2), graella.nx), ...
+        max(cel(3) - r(3), 1):min(cel(3) + r(3), graella.nz)) = true;
 end
 
 function incertesa = entropia(prob)
@@ -467,20 +478,21 @@ function [moviment, queFa, grad] = gradient_decidir(grad, comptes, celDron, grae
 conc = max(comptes(:)' / tempsPas - par.fonsSensor, 0) / par.sensibilitat;   % concentracio a cada sensor
 gradientNou = [0 0 0];
 gradientNou(1:numel(conc) / 2) = (conc(1:2:end) - conc(2:2:end)) / (2 * par.separacioSensors);
-if sum(comptes) >= par.llindarDeteccio
+passosMemoria = round(par.tempsMemoria / tempsPas);   % passos que recorda el senyal
+if sum(comptes) >= par.llindarDeteccio * tempsPas
     grad.passosSenseSenyal = 0;
     grad.filtrat = par.suavitzat * grad.filtrat + (1 - par.suavitzat) * gradientNou;
     grad.centreZigZag = celDron;        % si perd el senyal, el buscara al voltant d'aqui
     grad.tram = 0;
 else
     grad.passosSenseSenyal = grad.passosSenseSenyal + 1;
-    if grad.passosSenseSenyal > par.passosMemoria
+    if grad.passosSenseSenyal > passosMemoria
         grad.filtrat = [0 0 0];         % senyal perdut: oblida el gradient
     end
 end
 
 limits = [graella.ny graella.nx graella.nz];
-if grad.passosSenseSenyal <= par.passosMemoria
+if grad.passosSenseSenyal <= passosMemoria
     queFa = 'seguint el gradient';
     veines    = celDron + graella.moviments(1:6, :);
     dinsZona  = all(veines >= 1, 2) & all(veines <= limits, 2);
@@ -494,9 +506,10 @@ else
     if grad.tram == 0 || isequal(celDron, grad.desti)
         % Tram nou: cap a l'altre costat, el doble de lluny i a una altra alcada
         grad.tram = grad.tram + 1;
-        amplitud  = par.tramInicial * 2^(grad.tram - 1);
+        amplitud  = max(1, round(par.tramInicial / par.midaCella)) * 2^(grad.tram - 1);   % en cel.les
+        canviZ    = round(par.canviAlcadaZigZag / par.midaCella) * floor(grad.tram / 2);  % en cel.les
         costat    = (-1)^grad.tram;
-        desti     = grad.centreZigZag + [costat * amplitud, 0, costat * floor(grad.tram / 2)];
+        desti     = grad.centreZigZag + costat * [amplitud, 0, canviZ];
         grad.desti = min(max(desti, 1), limits);
     end
     falta = grad.desti - celDron;       % cel.les que falten per arribar al final del tram
