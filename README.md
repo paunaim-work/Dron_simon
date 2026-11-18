@@ -1,4 +1,5 @@
-fase0 -> complete
+fase0 -> complete.
+
 fase1 -> 
   - simular ploma gaussiana (done)
   - joc proves (done)
