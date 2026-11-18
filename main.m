@@ -13,18 +13,18 @@ function main()
 opcions.dimensio     = '3d';         % '2d' o '3d'
 opcions.tipusPloma   = 'complexa';   % 'gaussiana' o 'complexa'
 opcions.algorisme    = 'infotaxis';  % 'infotaxis' o 'gradient'
-opcions.generarPloma = true;         % false = fa servir el .nc que ja hi ha (no el torna a generar)
+opcions.generarPloma = false;         % false = fa servir el .nc que ja hi ha (no el torna a generar)
 opcions.llavor       = 1;            % mateix numero = mateixa simulacio ([] = cada cop diferent)
 opcions.animacio     = true;         % false = sense dibuix (molt mes rapid)
 opcions.dibuixaCada  = 2;            % redibuixa cada tants segons de simulacio
 
 %% ============================= ESCENARI ==============================
 % Unitats: metres i segons. El vent bufa cap a +x i el terra es z = 0.
-escenari.midaX          = 400;           % llargada de la zona (direccio del vent)
+escenari.midaX          = 499;           % llargada de la zona (direccio del vent)
 escenari.midaY          = 300;           % amplada de la zona (de traves al vent)
 escenari.midaZ          = 50;            % alcada de la zona (nomes en 3D)
-escenari.posFuga        = [60 150 10];   % on es la fuga [x y z] (el dron NO ho sap)
-escenari.posInicialDron = [340 215 30];  % d'on surt el dron [x y z]
+escenari.posFuga        = [27 150 11.5];   % on es la fuga [x y z] (el dron NO ho sap)
+escenari.posInicialDron = [400 200 30];  % d'on surt el dron [x y z]
 
 %% ============================ PARAMETRES =============================
 % Els valors per defecte son a Ploma.m i Dron.m. Es poden canviar aqui, per exemple:
