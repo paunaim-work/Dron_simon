@@ -1,4 +1,4 @@
-function main()
+function res = main(posFuga, posInicialDron, opcionsExtra)
 %MAIN  Un dron autonom busca l'origen d'una fuga de contaminant.
 %
 %   Tria les opcions de sota i executa amb F5. El codi esta en 3 fitxers:
@@ -8,6 +8,15 @@ function main()
 %     Dron.m   Classe Dron: parametres, sensor i algorismes de cerca.
 %
 %   Com funciona:  Ploma.generar -> fitxer .nc -> Ploma.llegir -> el dron vola
+%
+%   Es pot cridar sense arguments (F5) o des d'un altre fitxer (p. ex. un Monte Carlo):
+%
+%     res = main(posFuga, posInicialDron, opcionsExtra)
+%
+%     posFuga, posInicialDron  [x y z] (m); [] = els valors de sota
+%     opcionsExtra             struct amb els camps d'opcions que es volen canviar
+%                              (dimensio, tipusPloma, algorisme, llavor, animacio, silenci...)
+%     res                      struct amb trobada, temps, recorregut, distanciaFinal, ...
 
 %% ============================== OPCIONS ==============================
 opcions.dimensio     = '3d';         % '2d' o '3d'
@@ -17,6 +26,12 @@ opcions.generarPloma = true;         % false = fa servir el .nc que ja hi ha (no
 opcions.llavor       = 1;            % mateix numero = mateixa simulacio ([] = cada cop diferent)
 opcions.animacio     = true;         % false = sense dibuix (molt mes rapid)
 opcions.dibuixaCada  = 2;            % redibuixa cada tants segons de simulacio
+opcions.silenci      = false;        % true = no escriu el resultat a la pantalla
+if nargin >= 3 && ~isempty(opcionsExtra)     % opcions rebudes per parametre
+    for camp = fieldnames(opcionsExtra)'
+        opcions.(camp{1}) = opcionsExtra.(camp{1});
+    end
+end
 
 %% ============================= ESCENARI ==============================
 % Unitats: metres i segons. El vent bufa cap a +x i el terra es z = 0.
@@ -25,6 +40,8 @@ escenari.midaY          = 300;           % amplada de la zona (de traves al vent
 escenari.midaZ          = 50;            % alcada de la zona (nomes en 3D)
 escenari.posFuga        = [60 150 10];   % on es la fuga [x y z] (el dron NO ho sap)
 escenari.posInicialDron = [340 215 30];  % d'on surt el dron [x y z]
+if nargin >= 1 && ~isempty(posFuga),        escenari.posFuga        = posFuga;        end   % rebudes per parametre
+if nargin >= 2 && ~isempty(posInicialDron), escenari.posInicialDron = posInicialDron; end
 
 %% ============================ PARAMETRES =============================
 % Els valors per defecte son a Ploma.m i Dron.m. Es poden canviar aqui, per exemple:
@@ -47,8 +64,10 @@ end
 camp = Ploma.llegir(fitxer);                 % el dron treballa amb el que hi ha al fitxer
 
 res = simular(opcions, escenari, camp, parDron);
-fprintf('%s, ploma %s, algorisme %s: %s\n', upper(opcions.dimensio), ...
-        opcions.tipusPloma, opcions.algorisme, res.text);
+if ~opcions.silenci
+    fprintf('%s, ploma %s, algorisme %s: %s\n', upper(opcions.dimensio), ...
+            opcions.tipusPloma, opcions.algorisme, res.text);
+end
 end
 
 

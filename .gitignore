@@ -1,2 +1,3 @@
 # Fitxers de ploma generats per main.m (es poden tornar a generar)
 *.nc
+montecarlo_results.csv
