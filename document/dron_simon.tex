@@ -1,0 +1,536 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[catalan]{babel}
+\usepackage{lmodern}
+\usepackage[a4paper,margin=2.2cm]{geometry}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{needspace}
+\usepackage{placeins}
+\usepackage{caption}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta}
+\usepackage[hidelinks]{hyperref}
+
+\setlength{\parskip}{4pt}
+\captionsetup{font=small,labelfont=bf}
+
+\lstset{language=Matlab, basicstyle=\ttfamily\footnotesize, keywordstyle=\bfseries, commentstyle=\itshape, stringstyle=\ttfamily, frame=single, framerule=0.4pt, columns=fullflexible, keepspaces=true, breaklines=true, showstringspaces=false, upquote=true, aboveskip=8pt, belowskip=6pt, captionpos=t}
+\renewcommand{\lstlistingname}{Codi}
+
+\title{\textbf{Un dron autònom que busca l'origen d'una fuga}\\[4pt]\large Com funciona el codi, el dron i els algorismes de cerca}
+\author{Projecte \texttt{Dron\_simon} (branca \texttt{versio-modular})}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Aquest document explica el simulador \texttt{Dron\_simon}, escrit en MATLAB. Una fuga emet un contaminant que el vent s'emporta i forma una \emph{ploma}. Un dron que no sap on és la fuga l'ha de trobar només amb el que llegeix el seu sensor. Expliquem com està organitzat el codi, com es generen les quatre versions de ploma i com es guarden en fitxers \texttt{.nc}, com funciona el dron i els dos algorismes de cerca (\emph{infotaxis} i \emph{gradient}), i mostrem els resultats de les simulacions.
+\end{abstract}
+
+\setcounter{tocdepth}{1}
+\tableofcontents
+
+\section{Introducció}
+
+L'objectiu del projecte és simular un dron que troba l'origen d'una fuga de contaminant (per exemple, un gas tòxic) sense saber on és. L'única informació que té és la lectura d'un sensor químic que porta a sobre, i sap d'on bufa el vent. El dron es mou per l'espai, mesura i decideix on anar a continuació fins que arriba a tocar de la fuga o s'acaba la bateria.
+
+El problema és difícil perquè el contaminant no forma un núvol suau i continu. El vent és turbulent, és a dir, té remolins i canvis de direcció a l'atzar, i el gas arriba al sensor a ràfegues: el dron pot passar molts segons sense detectar res encara que sigui a prop de la fuga. A més, el sensor és sorollós: dues mesures al mateix lloc no donen el mateix valor.
+
+El simulador permet combinar tres opcions, que donen $2 \times 2 \times 2 = 8$ casos:
+\begin{itemize}
+\item \textbf{Dimensió}: \texttt{'2d'} (el dron vola sempre a l'alçada de la fuga i només busca en horitzontal) o \texttt{'3d'} (el dron no sap a quina alçada és la fuga i també es mou amunt i avall).
+\item \textbf{Tipus de ploma}: \texttt{'gaussiana'} (estacionària, és a dir, que no canvia amb el temps) o \texttt{'complexa'} (turbulenta, canvia a cada instant).
+\item \textbf{Algorisme}: \texttt{'infotaxis'} (el dron porta un mapa de probabilitat de on pot ser la fuga i va on espera aprendre més) o \texttt{'gradient'} (el dron va cap on la concentració augmenta).
+\end{itemize}
+
+\section{Estructura del codi}
+
+El codi està repartit en tres fitxers, cadascun amb una responsabilitat clara (taula~\ref{tab:fitxers}). La idea principal és que la ploma i el dron estiguin ben separats: la ploma es genera, es guarda en un fitxer i el dron només treballa amb el que hi ha en aquest fitxer.
+
+\begin{table}[htbp]
+\centering
+\caption{Els tres fitxers del projecte.}
+\label{tab:fitxers}
+\begin{tabular}{@{}lp{11.5cm}@{}}
+\toprule
+Fitxer & Què hi ha \\
+\midrule
+\texttt{main.m} & Les opcions per jugar, l'escenari, el bucle de simulació i el dibuix. És el que s'executa (F5). \\
+\texttt{Ploma.m} & Genera les 4 versions de ploma com una matriu de concentracions amb dimensió temporal, i la guarda i la llegeix en fitxers \texttt{.nc}. \\
+\texttt{Dron.m} & La classe \texttt{Dron}: paràmetres, graella de moviment, sensor, i els algorismes infotaxis i gradient. No fa servir res de \texttt{Ploma.m}. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+La figura~\ref{fig:flux} mostra el recorregut de les dades. \texttt{Ploma.generar} calcula la matriu de concentracions, \texttt{Ploma.guardar} l'escriu en un fitxer \texttt{.nc} i \texttt{Ploma.llegir} la torna a llegir en una \emph{struct} (una variable amb camps amb nom, com \texttt{camp.x} o \texttt{camp.c}) que anomenem \texttt{camp}. Després, la funció \texttt{simular} del \texttt{main.m} fa volar el dron dins d'aquest camp. Gràcies a aquesta separació, en el futur es podrà fer volar el dron dins de qualsevol fitxer \texttt{.nc}, per exemple el d'una ploma simulada amb un model atmosfèric realista.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[node distance=5mm and 16mm, caixa/.style={draw, rectangle, align=center, inner sep=5pt, font=\small, minimum height=12mm}, fletxa/.style={-{Stealth[length=2.5mm]}, thick}]
+\node[caixa] (gen) {\texttt{Ploma.generar}\\matriu $c(x,y,z,t)$};
+\node[caixa, right=of gen] (nc) {fitxer\\\texttt{ploma\_\ldots.nc}};
+\node[caixa, right=of nc] (lle) {\texttt{Ploma.llegir}\\struct \texttt{camp}};
+\node[caixa, below=8mm of lle] (sim) {\texttt{simular}: a cada pas\\\texttt{dron.pas(camp)}\\\texttt{dron.veuFuga(...)}};
+\node[caixa, left=of sim] (res) {resultat \texttt{res}\\i figures};
+\draw[fletxa] (gen) -- node[above, font=\footnotesize]{\texttt{guardar}} (nc);
+\draw[fletxa] (nc) -- (lle);
+\draw[fletxa] (lle) -- (sim);
+\draw[fletxa] (sim) -- (res);
+\end{tikzpicture}
+\caption{Flux de dades del simulador. Tot el que hi ha a la fila de dalt és a \texttt{Ploma.m}; la fila de baix és a \texttt{main.m} i fa servir la classe \texttt{Dron}.}
+\label{fig:flux}
+\end{figure}
+
+\subsection{Les opcions del \texttt{main.m}}
+
+L'usuari només ha de tocar la part de dalt del \texttt{main.m} (codi~\ref{lst:opcions}). Amb \texttt{generarPloma = false} no es torna a generar la ploma: es fa servir el fitxer \texttt{.nc} que ja hi ha. La \texttt{llavor} fixa els números aleatoris, de manera que el mateix número dona sempre la mateixa simulació.
+
+\needspace{10\baselineskip}
+\begin{lstlisting}[caption={Opcions del \texttt{main.m}.}, label=lst:opcions]
+%% ============================== OPCIONS ==============================
+opcions.dimensio     = '3d';         % '2d' o '3d'
+opcions.tipusPloma   = 'complexa';   % 'gaussiana' o 'complexa'
+opcions.algorisme    = 'infotaxis';  % 'infotaxis' o 'gradient'
+opcions.generarPloma = true;         % false = fa servir el .nc que ja hi ha (no el torna a generar)
+opcions.llavor       = 1;            % mateix numero = mateixa simulacio ([] = cada cop diferent)
+opcions.animacio     = true;         % false = sense dibuix (molt mes rapid)
+opcions.dibuixaCada  = 2;            % redibuixa cada tants segons de simulacio
+\end{lstlisting}
+
+Després de l'escenari i els paràmetres, el \texttt{main.m} fa exactament el que mostra la figura~\ref{fig:flux} (codi~\ref{lst:flux}). La línia \texttt{parDron.model = ...} li diu al dron quin tipus de ploma ha de suposar per a l'infotaxis (secció~\ref{sec:model}).
+
+\needspace{13\baselineskip}
+\begin{lstlisting}[caption={El flux principal del \texttt{main.m}: generar, guardar, llegir i simular.}, label=lst:flux]
+%% ============================ SIMULACIO ==============================
+if ~isempty(opcions.llavor)
+    rng(opcions.llavor);
+end
+fitxer = sprintf('ploma_%s_%s.nc', opcions.tipusPloma, opcions.dimensio);
+if opcions.generarPloma
+    camp = Ploma.generar(opcions.tipusPloma, opcions.dimensio, escenari, parPloma);
+    Ploma.guardar(camp, fitxer);
+end
+camp = Ploma.llegir(fitxer);                 % el dron treballa amb el que hi ha al fitxer
+
+res = simular(opcions, escenari, camp, parDron);
+\end{lstlisting}
+
+\subsection{Classes i objectes}
+
+El codi fa servir classes de MATLAB amb un estil semblant al de Java. Una \emph{classe} és la plantilla d'un tipus d'objecte: diu quines dades té (\emph{propietats}) i què sap fer (\emph{mètodes}). La taula~\ref{tab:java} resumeix les equivalències.
+
+\begin{table}[htbp]
+\centering
+\caption{Equivalències entre Java i les classes del projecte.}
+\label{tab:java}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Java & MATLAB (en aquest projecte) \\
+\midrule
+\texttt{class Dron} & \texttt{classdef Dron < handle} \\
+objectes per referència & \texttt{< handle}: \texttt{dron.pas(camp)} modifica el mateix dron \\
+\texttt{this} & \texttt{obj}, el primer argument de cada mètode \\
+constructor \texttt{new Dron(...)} & \texttt{Dron(...)}, la funció amb el nom de la classe \\
+camp \texttt{private} amb \emph{getter} públic & \texttt{properties (SetAccess = private)} \\
+mètodes \texttt{private} & \texttt{methods (Access = private)} \\
+mètodes \texttt{static} & \texttt{methods (Static)}, per exemple \texttt{Dron.parametres()} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\texttt{Dron} és una classe amb objectes: cada dron té la seva posició, el seu mapa i el seu estat. \texttt{Ploma}, en canvi, no crea objectes: només agrupa funcions estàtiques (com una classe de Java amb tot \texttt{static}), perquè el seu únic resultat és la matriu de concentracions.
+
+\section{L'escenari}
+
+Treballem en metres i segons. La zona de cerca fa $400 \times 300$~m en horitzontal i 50~m d'alçada. El vent bufa cap a $+x$ i el terra és $z = 0$. La fuga és a $(60, 150, 10)$~m i el dron surt de $(340, 215, 30)$~m, és a dir, 280~m vent avall de la fuga. En 2D el dron vola a l'alçada de la fuga ($z = 10$~m).
+
+Per tenir una referència, el camí més curt possible sobre la graella del dron (que només es mou en les direccions dels eixos) fins a quedar a tocar de la fuga és de 335~m en 2D i 355~m en 3D, que a 5~m/s són 67~s i 71~s.
+
+\section{La ploma (\texttt{Ploma.m})}
+
+\subsection{La ploma com a matriu amb temps}
+
+La ploma es representa com una matriu de quatre dimensions,
+\begin{equation}
+c(i_x, i_y, i_z, i_t) = \text{concentració al punt } (x_{i_x}, y_{i_y}, z_{i_z}) \text{ a l'instant } t_{i_t},
+\end{equation}
+amb els eixos \texttt{x}, \texttt{y}, \texttt{z} i \texttt{t} guardats com a vectors. La graella té un punt cada 5~m (\texttt{resolucio}), de manera que en 3D hi ha $81 \times 61 \times 11$ punts. La ploma complexa guarda un instant cada 5~s durant 1200~s, és a dir, 241 instants i uns 13 milions de valors (52~MB). La gaussiana no canvia amb el temps i en té prou amb un sol instant. Els valors per sota de $10^{-4}$ es guarden com a 0, perquè el sensor no els nota i així el fitxer ocupa molt menys.
+
+\subsection{El fitxer \texttt{.nc}}
+
+Un fitxer \texttt{.nc} (format \emph{NetCDF}) és un format científic pensat per guardar matrius grans amb els seus eixos i unitats. És el format estàndard en meteorologia i oceanografia, i es pot obrir des de MATLAB, Python i molts altres programes. Cada fitxer conté les variables \texttt{x}, \texttt{y}, \texttt{z}, \texttt{t} i \texttt{c}, les unitats de cada eix i la posició de la fuga com a atribut. La matriu \texttt{c} va comprimida: el fitxer de la ploma complexa en 3D ocupa uns 10~MB en lloc de 52~MB. Llegir-lo és tan senzill com el codi~\ref{lst:llegir}.
+
+\needspace{12\baselineskip}
+\begin{lstlisting}[caption={Lectura d'un fitxer \texttt{.nc} (\texttt{Ploma.llegir}).}, label=lst:llegir]
+function camp = llegir(fitxer)
+%LLEGIR  Llegeix un camp d'un fitxer .nc (el que ha escrit guardar).
+    camp.x = ncread(fitxer, 'x')';
+    camp.y = ncread(fitxer, 'y')';
+    camp.z = ncread(fitxer, 'z')';
+    camp.t = ncread(fitxer, 't')';
+    camp.c = ncread(fitxer, 'c');
+    camp.posFuga = ncreadatt(fitxer, '/', 'posFuga');
+    camp.posFuga = camp.posFuga(:)';
+end
+\end{lstlisting}
+
+\subsection{Ploma gaussiana}
+
+És el model clàssic de dispersió de contaminants (Pasquill-Gifford). Suposa que el vent és constant i que la ploma ja no canvia. A una distància $d$ vent avall de la fuga, a una distància $\Delta y$ de traves al vent i a l'alçada $z$, la concentració és
+\begin{equation}
+c = \frac{Q}{2\pi U \sigma_y \sigma_z} \exp\!\left(-\frac{\Delta y^2}{2\sigma_y^2}\right) \left[\exp\!\left(-\frac{(z-H)^2}{2\sigma_z^2}\right) + \exp\!\left(-\frac{(z+H)^2}{2\sigma_z^2}\right)\right],
+\end{equation}
+on $Q = 5000$ és la taxa d'emissió de la fuga, $U = 3$~m/s la velocitat del vent i $H$ l'alçada de la fuga. La ploma té forma de campana de Gauss de traves al vent i en vertical, i s'eixampla a mesura que s'allunya de la fuga: l'amplada $\sigma_y$ i el gruix $\sigma_z$ segueixen les fórmules de Briggs per a una atmosfera neutra,
+\begin{equation}
+\sigma_y = \frac{0{,}08\, d}{\sqrt{1 + 10^{-4} d}}, \qquad \sigma_z = \frac{0{,}06\, d}{\sqrt{1 + 1{,}5 \cdot 10^{-3} d}},
+\end{equation}
+a les quals se suma la mida de la fuga (1~m). El segon terme del claudàtor és la \emph{imatge} de la fuga sota terra: representa el gas que rebota al terra en lloc d'atravessar-lo. Vent amunt de la fuga la concentració és zero.
+
+\subsection{Ploma complexa}
+
+La ploma complexa imita una ploma turbulenta. La fuga emet \emph{puffs}, petits núvols de gas, i cada puff és una campana de Gauss en 3D amb un centre $(x_p, y_p, z_p)$, una mida horitzontal $\sigma_{H,p}$, una mida vertical $\sigma_{V,p}$ i una massa $m_p$. A cada pas de temps $\Delta t = 1$~s passa el següent (codi~\ref{lst:puffs}):
+\begin{enumerate}
+\item \textbf{El vent canvia de direcció a l'atzar.} L'angle del vent $\theta$ segueix un procés d'Ornstein-Uhlenbeck: un soroll aleatori que recorda una mica el valor anterior,
+\begin{equation}
+\theta_{n+1} = a\,\theta_n + \sigma_\theta \sqrt{1-a^2}\;\xi, \qquad a = e^{-\Delta t/\tau},
+\end{equation}
+on $\xi$ és un número aleatori normal, $\sigma_\theta = 15^\circ$ és l'oscil·lació típica i $\tau = 40$~s el temps típic que dura. Això fa que la ploma serpentegi (\emph{meandre}).
+\item \textbf{Els puffs es mouen} amb el vent ($U = 2$~m/s en la direcció $\theta$) més un salt aleatori que representa la turbulència petita (un passeig aleatori). Si un puff toca el terra, rebota.
+\item \textbf{Els puffs s'eixamplen} ($\sigma^2$ creix linealment amb el temps) i \textbf{s'esvaeixen} (la massa decau amb un temps de vida de 200~s).
+\item \textbf{La fuga emet puffs nous} (2 per segon) i s'esborren els que han sortit de la zona.
+\end{enumerate}
+
+\needspace{16\baselineskip}
+\begin{lstlisting}[caption={Moviment dels puffs en un pas de temps (part de \texttt{Ploma.avancarPuffs}).}, label=lst:puffs]
+% 1. La direccio del vent oscil.la a l'atzar: recorda una mica la
+%    direccio d'abans i hi suma soroll (proces d'Ornstein-Uhlenbeck)
+memoria = exp(-dt / p.meandreTemps);
+e.angleVent = memoria * e.angleVent + (p.meandreGraus * pi / 180) * sqrt(1 - memoria^2) * randn;
+
+% 2. Els puffs es mouen amb el vent i a l'atzar (turbulencia),
+%    s'eixamplen i es van esvaint
+saltH = sqrt(2 * p.turbulenciaH * dt);
+saltV = sqrt(2 * p.turbulenciaV * dt);
+e.x = e.x + p.vent * cos(e.angleVent) * dt + saltH * randn(size(e.x));
+e.y = e.y + p.vent * sin(e.angleVent) * dt + saltH * randn(size(e.y));
+e.z = abs(e.z + saltV * randn(size(e.z)));       % abs: reboten al terra
+e.sigma2H = e.sigma2H + 2 * p.creixementH * dt;
+e.sigma2V = e.sigma2V + 2 * p.creixementV * dt;
+e.massa   = e.massa * exp(-dt / p.tempsVida);
+\end{lstlisting}
+
+La concentració en un punt és la suma de totes les campanes, cadascuna amb la seva imatge sota terra:
+\begin{equation}
+c(x,y,z) = \sum_p \frac{m_p}{(2\pi)^{3/2}\sigma_{H,p}^2\,\sigma_{V,p}} \, e^{-\frac{(x-x_p)^2+(y-y_p)^2}{2\sigma_{H,p}^2}} \left[e^{-\frac{(z-z_p)^2}{2\sigma_{V,p}^2}} + e^{-\frac{(z+z_p)^2}{2\sigma_{V,p}^2}}\right].
+\end{equation}
+Calcular-ho punt per punt seria lent: hi ha uns 54\,000 punts i uns quants centenars de puffs. Per això fem servir un truc: una campana en 3D és el producte de tres campanes en 1D (una en $x$, una en $y$ i una en $z$). Llavors cada pla horitzontal de la matriu és un producte de matrius, que l'ordinador fa molt de pressa (codi~\ref{lst:suma}).
+
+\needspace{11\baselineskip}
+\begin{lstlisting}[caption={Suma de tots els puffs amb productes de matrius (\texttt{Ploma.sumaPuffs}).}, label=lst:suma]
+pes = e.massa ./ ((2 * pi)^1.5 * e.sigma2H .* sqrt(e.sigma2V));   % alcada de cada campana
+gx  = exp(-(x(:) - e.x').^2 ./ (2 * e.sigma2H'));                  % (nx x puffs)
+gy  = exp(-(y(:) - e.y').^2 ./ (2 * e.sigma2H'));                  % (ny x puffs)
+gz  = exp(-(z(:) - e.z').^2 ./ (2 * e.sigma2V')) + ...
+      exp(-(z(:) + e.z').^2 ./ (2 * e.sigma2V'));                  % (nz x puffs)
+c = zeros(numel(x), numel(y), numel(z));
+for k = 1:numel(z)
+    c(:, :, k) = gx * ((pes .* gz(k, :)') .* gy');
+end
+\end{lstlisting}
+
+Abans de l'instant $t = 0$ (quan surt el dron), la ploma complexa ja evoluciona durant 300~s, perquè la ploma ja estigui formada. Després es guarda un instant cada 5~s (codi~\ref{lst:generar}).
+
+\needspace{17\baselineskip}
+\begin{lstlisting}[caption={Generació de la ploma complexa (part de \texttt{Ploma.generar}).}, label=lst:generar]
+camp.t = 0:par.cadaSegons:par.durada;
+camp.c = zeros(numel(camp.x), numel(camp.y), numel(camp.z), numel(camp.t), 'single');
+estat  = Ploma.puffsInicials();
+zona   = [escenari.midaX escenari.midaY];
+% Abans de t = 0 la fuga ja fa estona que emet
+for i = 1:round(par.tempsPrevi / par.pasTemps)
+    estat = Ploma.avancarPuffs(estat, f, zona, par.complexa, par.pasTemps);
+end
+% Es guarda un instant cada par.cadaSegons
+for it = 1:numel(camp.t)
+    if it > 1
+        for i = 1:round(par.cadaSegons / par.pasTemps)
+            estat = Ploma.avancarPuffs(estat, f, zona, par.complexa, par.pasTemps);
+        end
+    end
+    camp.c(:, :, :, it) = Ploma.sumaPuffs(estat, camp.x, camp.y, camp.z);
+end
+\end{lstlisting}
+
+\subsection{2D i 3D}
+
+En 3D la graella té 11 alçades (de 0 a 50~m). En 2D només en té una, l'alçada de la fuga, i per tant la matriu és, de fet, un tall horitzontal de la ploma 3D. Combinant tipus i dimensió surten les quatre versions de ploma. La figura~\ref{fig:plomes} compara les dues plomes i la figura~\ref{fig:temps} mostra com canvia la complexa amb el temps.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/plomes.png}
+\caption{Les dues plomes en 3D, en escala logarítmica (més fosc vol dir més concentració). A dalt, vistes des de dalt a l'alçada de la fuga; a baix, vistes de costat pel pla $y = 150$~m. L'estrella és la fuga. La gaussiana és un con suau i simètric; la complexa és més estreta, serpenteja i en aquest instant el vent l'ha desviada cap a $+y$.}
+\label{fig:plomes}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/complexa_temps.png}
+\caption{La ploma complexa (des de dalt, $z = 10$~m) en tres instants. El meandre del vent fa que la ploma canviï de direcció: un dron que sigui en un lloc fix pot passar d'estar dins la ploma a estar-ne fora.}
+\label{fig:temps}
+\end{figure}
+
+\section{El dron (\texttt{Dron.m})}
+
+\subsection{Moviment}
+
+El dron es mou per una graella de cel·les de 5~m. A cada pas pot anar a una de les sis cel·les veïnes (est, nord, oest, sud, amunt o avall) o quedar-se quiet. Com que vola a 5~m/s, cada pas dura $\Delta t = 1$~s, i amb una autonomia de 2500~s pot fer 2500 passos. En 3D vola entre 5 i 40~m d'alçada. Considerem que ha trobat la fuga quan hi és a menys de 5~m en $x$ i en $y$ i a menys de 2~m en alçada.
+
+\subsection{El sensor}
+
+El sensor és un comptador de deteccions, com un comptador Geiger: no dona la concentració directament, sinó un nombre enter de \emph{comptes} a cada pas. El nombre de comptes segueix una distribució de Poisson, la que descriu esdeveniments independents que passen a l'atzar amb un ritme mitjà $\lambda$:
+\begin{equation}
+k \sim \text{Poisson}(\lambda), \qquad \lambda = \Delta t\,(s\,c + b), \qquad P(k) = \frac{\lambda^k e^{-\lambda}}{k!},
+\end{equation}
+on $c$ és la concentració real, $s = 1$ la sensibilitat i $b = 0{,}02$ comptes/s el soroll de fons (falses deteccions). Amb concentracions baixes, el més probable és $k = 0$: el sensor sovint no detecta res encara que hi hagi gas. Els números de Poisson es generen amb el mètode de Knuth, sense necessitat de cap \emph{toolbox}.
+
+L'infotaxis fa servir un sol sensor, al centre del dron. El gradient en fa servir quatre (en 2D) o sis (en 3D), en creu, a 5~m del centre.
+
+\subsection{Un pas del dron}
+
+El mètode \texttt{pas} fa tres coses: mesura, decideix i es mou (codi~\ref{lst:pas}). La concentració que llegeix cada sensor surt del \texttt{camp} amb \texttt{llegirCamp} (codi~\ref{lst:llegircamp}), que agafa el punt de la graella i l'instant més propers. Si el dron vola més temps del que dura el fitxer, fa servir l'últim instant, i per tant també funciona amb fitxers d'un sol instant. Fora de la zona del fitxer la concentració és 0.
+
+\needspace{24\baselineskip}
+\begin{lstlisting}[caption={Un pas del dron (\texttt{Dron.pas}).}, label=lst:pas]
+function pas(obj, camp)
+%PAS  Un pas del dron: mesura, decideix on va i s'hi mou.
+    p = obj.par;
+
+    % 1. Mesura: comptes de cada sensor
+    conc    = Dron.llegirCamp(camp, obj.pos + obj.desplSensors, obj.temps);
+    comptes = Dron.poissonAleatori(obj.dt * (p.sensibilitat * conc + p.fonsSensor));
+    % concentracio que el dron dedueix dels comptes (mitjana dels sensors)
+    obj.concMesurada = mean(max(comptes / obj.dt - p.fonsSensor, 0) / p.sensibilitat);
+
+    % 2. Decideix on va
+    if strcmp(obj.algorisme, 'infotaxis')
+        obj.infotaxisActualitzar(comptes);
+        moviment = obj.infotaxisDecidir();
+    else
+        c = obj.cel;
+        obj.mapa(c(1), c(2), c(3)) = max(obj.mapa(c(1), c(2), c(3)), obj.concMesurada);
+        moviment = obj.gradientDecidir(comptes);
+    end
+
+    % 3. Es mou a una cel.la veina (o es queda quiet)
+    obj.cel = obj.cel + moviment;
+    obj.pos = obj.posicio(obj.cel);
+    obj.temps = obj.temps + obj.dt;
+end
+\end{lstlisting}
+
+\needspace{11\baselineskip}
+\begin{lstlisting}[caption={Lectura del camp pels sensors (part de \texttt{Dron.llegirCamp}).}, label=lst:llegircamp]
+it = Dron.mesProper(camp.t, t);
+c  = zeros(size(pos, 1), 1);
+for i = 1:size(pos, 1)
+    x = pos(i, 1);  y = pos(i, 2);  z = pos(i, 3);
+    if x >= camp.x(1) && x <= camp.x(end) && y >= camp.y(1) && y <= camp.y(end)
+        c(i) = camp.c(Dron.mesProper(camp.x, x), Dron.mesProper(camp.y, y), ...
+                      Dron.mesProper(camp.z, z), it);
+    end
+end
+\end{lstlisting}
+
+\section{L'algorisme infotaxis}
+
+L'infotaxis (Vergassola, Villermaux i Shraiman, \emph{Nature} 2007) parteix d'una idea senzilla: com que el senyal arriba a ràfegues, no té sentit perseguir-lo. En comptes d'això, el dron porta un mapa de probabilitat de on pot ser la fuga i, a cada pas, va cap on espera reduir més la seva incertesa.
+
+\subsection{El mapa de probabilitat}
+
+El dron guarda una probabilitat $P(\mathbf{r})$ per a cada cel·la $\mathbf{r}$ de la graella: la probabilitat que la fuga hi sigui. Al principi és igual a tot arreu, menys a la zona que el dron ja veu (si la fuga hi fos, ja l'hauria trobada).
+
+\subsection{El model del dron}
+\label{sec:model}
+
+Per interpretar les mesures, el dron necessita saber quants comptes esperaria mesurar si la fuga fos a cada lloc. Aquest és el seu \emph{model} de la ploma, i és una simplificació: el dron no coneix la ploma real, només com és de mitjana. Si la ploma és gaussiana, el model és la mateixa fórmula gaussiana. Si és complexa, és la solució mitjana de l'equació d'advecció-difusió (el gas és arrossegat pel vent, \emph{advecció}, i s'escampa, \emph{difusió}):
+\begin{equation}
+c = \frac{Q}{4\pi\sqrt{D_h D_v}}\, e^{\frac{\Delta x\, U}{2D_h}} \left[\frac{e^{-r_1/\ell}}{r_1} + \frac{e^{-r_2/\ell}}{r_2}\right], \qquad \ell = \sqrt{\frac{D_h\, T}{1 + U^2 T/(4 D_h)}},
+\end{equation}
+on $D_h$ i $D_v$ són les difusivitats horitzontal i vertical (resumeixen la turbulència i el meandre del vent en un sol número), $T$ el temps de vida del contaminant, $\ell$ fins on arriba la ploma, i $r_1$ i $r_2$ les distàncies a la fuga i a la seva imatge sota terra. Com que aquests comptes esperats només depenen de la posició relativa entre el dron i la fuga, es calculen una sola vegada al principi i es guarden en una taula.
+
+\subsection{Actualització amb la regla de Bayes}
+
+Quan el dron mesura $k$ comptes, actualitza el mapa amb la regla de Bayes: cada possible posició de la fuga es multiplica per la probabilitat d'haver mesurat $k$ comptes si la fuga fos allà,
+\begin{equation}
+P_{\text{nou}}(\mathbf{r}) \propto P(\mathbf{r}) \cdot \frac{\lambda(\mathbf{r})^k\, e^{-\lambda(\mathbf{r})}}{k!},
+\end{equation}
+on $\lambda(\mathbf{r})$ són els comptes que el model espera si la fuga és a $\mathbf{r}$. Després es normalitza perquè la suma sigui 1. Les posicions que expliquen bé la mesura guanyen probabilitat i les que no, en perden. El codi~\ref{lst:bayes} ho fa amb logaritmes per evitar números massa grans.
+
+\needspace{11\baselineskip}
+\begin{lstlisting}[caption={Regla de Bayes (part de \texttt{Dron.infotaxisActualitzar}).}, label=lst:bayes]
+visible  = obj.zonaVisible(obj.cel);
+esperats = obj.comptesEsperats(obj.cel);
+nou = obj.mapa .* exp(-esperats + comptes * log(esperats) - gammaln(comptes + 1));
+nou(visible) = 0;
+if sum(nou(:)) == 0                  % mesura que el model no explica:
+    nou = obj.mapa;                  % nomes descartem la zona visible
+    nou(visible) = 0;
+end
+obj.mapa = nou / sum(nou(:));
+\end{lstlisting}
+
+\subsection{La decisió}
+
+La incertesa del mapa es mesura amb l'\emph{entropia} de Shannon, $S = -\sum_{\mathbf{r}} P(\mathbf{r}) \ln P(\mathbf{r})$: és gran quan la probabilitat està repartida i zero quan se sap del cert on és la fuga. Per a cada moviment possible cap a una cel·la $\mathbf{r}_j$, el dron calcula el canvi d'entropia que espera:
+\begin{equation}
+\Delta S(\mathbf{r}_j) = P(\mathbf{r}_j)\,(-S) + \big[1 - P(\mathbf{r}_j)\big] \sum_k \rho_k(\mathbf{r}_j)\, \Delta S_k.
+\end{equation}
+El primer terme és la possibilitat de trobar la fuga en arribar-hi (llavors la incertesa desapareix). El segon és el que aprendria si no la troba: mesuraria $k$ comptes amb probabilitat $\rho_k$ i l'entropia canviaria $\Delta S_k$. Els comptes s'agrupen en intervals (0, 1, 2, 3--4, 5--7, 8--12\ldots) per calcular-ho més de pressa. El dron tria el moviment amb el $\Delta S$ més negatiu. Aquesta fórmula equilibra dues coses: anar on és més probable que hi hagi la fuga (\emph{explotar}) i anar on la mesura serà més informativa (\emph{explorar}). Quan cap moviment aporta informació, el dron va directament cap a la cel·la més probable (codi~\ref{lst:decidir}).
+
+\needspace{15\baselineskip}
+\begin{lstlisting}[caption={Final de la decisió de l'infotaxis (part de \texttt{Dron.infotaxisDecidir}).}, label=lst:decidir]
+    canvi(m) = probTrobar * (-S) + (1 - probTrobar) * canviMesura;
+end
+
+if min(canvi) > -1e-6
+    % Ja no pot aprendre res mes: va directe al punt mes probable
+    obj.queFa = 'cap al punt mes probable';
+    [~, idx] = max(prob(:));
+    [iy, ix, iz] = ind2sub(g.mida, idx);
+    moviment = Dron.pasCapA(obj.cel, [iy ix iz]);
+else
+    obj.queFa = 'infotaxis';
+    [~, millor] = min(canvi + 1e-10 * abs(S) * rand(7, 1));   % desempat a l'atzar
+    moviment = g.moviments(millor, :);
+end
+\end{lstlisting}
+
+La figura~\ref{fig:inf2d} mostra com evoluciona el mapa en el cas més senzill (2D, ploma gaussiana). Als 20~s el dron gairebé no ha detectat res, però això també és informació: les zones blanques són llocs on ja és poc probable que hi hagi la fuga, perquè si hi fos el dron hauria detectat més. Als 60~s, amb unes quantes deteccions, la probabilitat ja es concentra en una franja vent amunt al voltant de $y = 150$~m, que és on és la fuga.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{figures/g2d_inf_t020.png}\\[4pt]
+\includegraphics[width=0.85\textwidth]{figures/g2d_inf_t060.png}
+\caption{Infotaxis en 2D amb ploma gaussiana, als 20~s (a dalt) i als 60~s (a baix). A cada figura: l'escena real amb la ploma, la fuga (estrella), el dron (cercle) i la trajectòria (esquerra); el mapa de probabilitat del dron (dreta a dalt, més fosc és més probable); i la concentració que mesura (dreta a baix).}
+\label{fig:inf2d}
+\end{figure}
+
+\section{L'algorisme del gradient}
+
+Aquest algorisme és més intuïtiu: el dron va cap on la concentració augmenta, com qui segueix una olor. El \emph{gradient} és la direcció en què la concentració creix més de pressa, i s'estima amb els sensors en creu per diferències finites (la diferència entre dos sensors oposats dividida per la distància entre ells):
+\begin{equation}
+\frac{\partial c}{\partial x} \approx \frac{c_{\text{est}} - c_{\text{oest}}}{2d}, \qquad \frac{\partial c}{\partial y} \approx \frac{c_{\text{nord}} - c_{\text{sud}}}{2d}, \qquad \frac{\partial c}{\partial z} \approx \frac{c_{\text{sobre}} - c_{\text{sota}}}{2d},
+\end{equation}
+amb $d = 5$~m. Com que les mesures són molt sorolloses, el gradient se suavitza amb un filtre exponencial, una mitjana que dona més pes a les mesures recents: $\mathbf{g} \leftarrow 0{,}6\,\mathbf{g} + 0{,}4\,\mathbf{g}_{\text{nou}}$.
+
+El dron té dos modes (codi~\ref{lst:gradient}):
+\begin{itemize}
+\item \textbf{Seguint el gradient.} Si ha detectat senyal en els últims 4~s, va a la cel·la veïna en la direcció on el gradient és més gran. Mai va vent avall, perquè sap que la fuga sempre és vent amunt.
+\item \textbf{Buscant en zig-zag.} Si fa més de 4~s que no detecta res, ha perdut la ploma i la busca en zig-zag de traves al vent al voltant d'on l'ha perduda, com fan les arnes quan segueixen una olor. Els trams van alternativament cap a un costat i cap a l'altre, i cada un arriba el doble de lluny del punt on l'ha perduda (20, 40, 80~m\ldots). En 3D, cada tram també canvia d'alçada, alternativament per sobre i per sota, cada cop una mica més.
+\end{itemize}
+
+\needspace{20\baselineskip}
+\begin{lstlisting}[caption={La decisió del gradient: seguir el gradient o buscar en zig-zag (part de \texttt{Dron.gradientDecidir}).}, label=lst:gradient]
+if obj.passosSenseSenyal <= passosMemoria
+    obj.queFa = 'seguint el gradient';
+    veines    = obj.cel + g.moviments(1:6, :);
+    dinsZona  = all(veines >= 1, 2) & all(veines <= g.mida, 2);
+    projeccio = g.moviments(1:6, [2 1 3]) * obj.gradientFiltrat' + 1e-12 * rand(6, 1);   % gradient en cada direccio
+    projeccio(~dinsZona) = -Inf;
+    projeccio(1) = -Inf;             % mai vent avall
+    [~, millor] = max(projeccio);
+    moviment = g.moviments(millor, :);
+else
+    obj.queFa = 'buscant la ploma en zig-zag';
+    if obj.tram == 0 || isequal(obj.cel, obj.destiTram)
+        % Tram nou: cap a l'altre costat, el doble de lluny i a una altra alcada
+        obj.tram = obj.tram + 1;
+        amplitud = max(1, round(p.tramInicial / p.midaCella)) * 2^(obj.tram - 1);    % en cel.les
+        canviZ   = round(p.canviAlcadaZigZag / p.midaCella) * floor(obj.tram / 2);  % en cel.les
+        costat   = (-1)^obj.tram;
+        obj.destiTram = min(max(obj.centreZigZag + costat * [amplitud 0 canviZ], 1), g.mida);
+    end
+    moviment = Dron.pasCapA(obj.cel, obj.destiTram);
+\end{lstlisting}
+
+\section{La simulació (\texttt{main.m})}
+
+La funció \texttt{simular} crea el dron i el fa volar pas a pas. A cada pas el dron mesura, decideix i es mou (\texttt{dron.pas(camp)}), i es comprova si ha arribat a la fuga (\texttt{dron.veuFuga}). La simulació s'acaba quan la troba o quan s'acaba l'autonomia. \texttt{simular} retorna una \emph{struct} \texttt{res} amb el resultat: si l'ha trobada, el temps, la distància recorreguda, la distància final a la fuga i la trajectòria. Això permetrà fer moltes simulacions seguides (Monte Carlo) i analitzar-les.
+
+Si l'animació està activada, cada 2~s de simulació es redibuixa una figura amb quatre panells: l'escena real (la ploma a l'alçada del dron pintada al terra, la fuga, el dron i la trajectòria), en 3D també una vista lateral de la ploma pel pla vertical que passa pel dron, el que sap el dron (el mapa de probabilitat de l'infotaxis o la concentració màxima mesurada a cada lloc pel gradient) i la concentració que el dron ha mesurat al llarg del temps.
+
+\section{Resultats}
+
+Les figures i els resultats d'aquest document s'han generat amb GNU Octave, que és compatible amb MATLAB, amb la llavor 1. Per a la impressió en blanc i negre, a les figures s'ha canviat la paleta de colors per una escala de grisos (més fosc vol dir més concentració o més probabilitat). Com que MATLAB i Octave generen números aleatoris diferents, a MATLAB les trajectòries concretes poden ser diferents.
+
+\subsection{Els vuit casos}
+
+La taula~\ref{tab:resultats} recull els vuit casos. L'índex de recorregut és la distància recorreguda dividida pel camí mínim (335~m en 2D i 355~m en 3D): un índex de 2 vol dir que el dron ha fet el doble de camí del necessari.
+
+\begin{table}[htbp]
+\centering
+\caption{Resultats dels vuit casos (llavor 1). En tots els casos el dron troba la fuga.}
+\label{tab:resultats}
+\begin{tabular}{@{}lllrrr@{}}
+\toprule
+Dimensió & Ploma & Algorisme & Temps (s) & Recorregut (m) & Índex \\
+\midrule
+2D & gaussiana & infotaxis & 130 & 630 & 1,9 \\
+2D & gaussiana & gradient & 196 & 980 & 2,9 \\
+2D & complexa & infotaxis & 279 & 1395 & 4,2 \\
+2D & complexa & gradient & 228 & 1140 & 3,4 \\
+\midrule
+3D & gaussiana & infotaxis & 255 & 1250 & 3,5 \\
+3D & gaussiana & gradient & 346 & 1730 & 4,9 \\
+3D & complexa & infotaxis & 307 & 1535 & 4,3 \\
+3D & complexa & gradient & 275 & 1375 & 3,9 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Amb la ploma gaussiana, l'infotaxis ha estat més ràpid que el gradient, tant en 2D com en 3D. És el cas ideal per a l'infotaxis, perquè el seu model coincideix exactament amb la ploma real. Amb la ploma complexa, en canvi, el gradient ha estat més ràpid en aquesta llavor. Els casos en 3D són més difícils que els 2D perquè el dron també ha de trobar l'alçada de la fuga.
+
+\subsection{Ploma complexa}
+
+La figura~\ref{fig:grad} mostra dues cerques amb el gradient i ploma complexa. En tots dos casos es veu el patró típic: el dron fa trams en zig-zag de traves al vent mentre no té senyal i, quan entra a la ploma, la remunta cap a la fuga. La concentració mesurada (panell de baix a la dreta) augmenta a mesura que s'hi acosta. En 3D, la vista lateral mostra com el dron també busca en alçada.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{figures/c2d_grad_final.png}\\[4pt]
+\includegraphics[width=0.85\textwidth]{figures/c3d_grad_final.png}
+\caption{Gradient amb ploma complexa, en 2D (a dalt) i en 3D (a baix), en el moment de trobar la fuga. El panell de dalt a la dreta mostra la concentració màxima que el dron ha mesurat a cada lloc.}
+\label{fig:grad}
+\end{figure}
+
+La figura~\ref{fig:inf3d} mostra l'infotaxis en 3D amb ploma complexa. Als 200~s el dron creu que la fuga és a prop de $(155, 120)$~m, però la fuga real és a $(60, 150)$~m. Això passa perquè el seu model suposa una ploma mitjana, recta i suau, mentre que la ploma real serpenteja: quan el dron entra en una branca desviada de la ploma i hi mesura força comptes, el model interpreta que la fuga és a prop. Quan hi arriba i no la troba, descarta aquella zona i continua vent amunt fins que la troba als 307~s. Aquest és el punt feble de l'infotaxis: depèn de tenir un bon model de la ploma.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{figures/c3d_inf_t200.png}\\[4pt]
+\includegraphics[width=0.85\textwidth]{figures/c3d_inf_final.png}
+\caption{Infotaxis en 3D amb ploma complexa: als 200~s (a dalt), quan el dron creu que la fuga és a prop de $(155, 120)$~m, i al final (a baix), quan la troba.}
+\label{fig:inf3d}
+\end{figure}
+
+\subsection{Cost de càlcul}
+
+L'infotaxis és molt més car de calcular que el gradient. A cada pas ha d'avaluar set moviments, i per a cadascun recórrer tots els intervals de comptes sobre totes les posicions possibles de la fuga. En 3D això són uns 80~ms per pas a Octave, mentre que un pas del gradient triga aproximadament 1~ms. Generar la ploma complexa en 3D i desar-la al fitxer \texttt{.nc} triga uns 2~s.
+
+\FloatBarrier
+\section{Limitacions i treball futur}
+
+\begin{itemize}
+\item \textbf{Una sola llavor.} Els resultats de la taula~\ref{tab:resultats} corresponen a una sola simulació per cas, i amb una altra llavor podrien canviar. Per comparar els algorismes de manera fiable cal fer moltes simulacions amb plomes i posicions aleatòries (Monte Carlo) i comparar-ne les mitjanes. La funció \texttt{simular} ja retorna el resultat en una \emph{struct} per facilitar-ho.
+\item \textbf{Plomes realistes.} El dron només llegeix el fitxer \texttt{.nc}, de manera que es podrà fer volar dins d'una ploma simulada amb un model atmosfèric realista. Si aquest fitxer té un sol instant, el dron veurà una ploma congelada.
+\item \textbf{El model de l'infotaxis.} Amb plomes reals, el dron no sabrà la taxa d'emissió ni la turbulència exactes, i caldrà estudiar com afecta un model imperfecte.
+\item \textbf{Simplificacions.} El dron només es mou en les direccions dels eixos, coneix perfectament la direcció mitjana del vent, i els sensors llegeixen el punt de la graella i l'instant més propers, sense interpolar.
+\end{itemize}
+
+\end{document}
