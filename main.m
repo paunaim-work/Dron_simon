@@ -130,7 +130,8 @@ else
 end
 buit = zeros(numel(camp.y), numel(camp.x));
 fig.terra = surf(camp.x, camp.y, buit, buit, 'EdgeColor', 'none', 'FaceColor', 'interp');
-hold on;  caxis([-2 2.5]);
+hold on;  
+clim([-2 2.5]);
 plot3(f(1) * [1 1], f(2) * [1 1], [0 f(3)], 'g-', 'LineWidth', 1.5);
 plot3(f(1), f(2), f(3), estilFuga{:});
 fig.trajectoria = plot3(nan, nan, nan, 'b-', 'LineWidth', 1.5);
@@ -149,7 +150,9 @@ fig.titol = title('');
 if tresD
     subplot('Position', [0.05 0.08 0.42 0.22]);
     fig.lateral = imagesc(camp.x, camp.z, zeros(numel(camp.z), numel(camp.x)));
-    set(gca, 'YDir', 'normal');  caxis([-2 2.5]);  hold on;
+    set(gca, 'YDir', 'normal');  
+    clim ([-2 2.5]);  
+    hold on;
     plot(f(1), f(3), estilFuga{:});
     fig.trajLateral = plot(nan, nan, 'b-', 'LineWidth', 1.5);
     fig.dronLateral = plot(nan, nan, estilDron{:});
@@ -165,10 +168,10 @@ set(gca, 'YDir', 'normal');  axis equal;  axis([g.x(1) g.x(end) g.y(1) g.y(end)]
 fig.dronMapa = plot(nan, nan, estilDron{:});
 xlabel('x (m)');  ylabel('y (m)');
 if strcmp(dron.algorisme, 'infotaxis')
-    caxis([0 1]);
+    clim([0 1]);
     title('El que creu el dron: probabilitat de on es la fuga');
 else
-    caxis([-2 2.5]);
+    clim([-2 2.5]);
     title('El que sap el dron: concentracio que ha mesurat a cada lloc');
 end
 
