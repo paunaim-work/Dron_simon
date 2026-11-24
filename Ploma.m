@@ -20,11 +20,16 @@ classdef Ploma
 %     dimensio  '3d'         Moltes alcades.
 %               '2d'         Una sola alcada: la de la fuga.
 %
+%   I a mes hi ha la ploma REAL: una simulacio feta amb el model PALM (la
+%   dispersio de PM10 al port de Tarragona), que ja ve en un fitxer .nc.
+%   No es genera: importarPalm la llegeix i la posa en el mateix format.
+%
 %   Aquesta classe no crea objectes: nomes agrupa funcions (com una classe
 %   de Java amb tot "static"). Exemple:
 %
 %       par  = Ploma.parametres();
-%       camp = Ploma.generar('complexa', '3d', escenari, par);
+%       camp = Ploma.generar('complexa', '3d', escenari, par);   % o be:
+%       camp = Ploma.importarPalm('3d', par);                    % la real
 %       Ploma.guardar(camp, 'ploma.nc');
 %       camp = Ploma.llegir('ploma.nc');
 %
@@ -59,6 +64,14 @@ methods (Static)
         par.complexa.turbulenciaV  = 0.2;   % ... i en vertical (m^2/s)
         par.complexa.meandreGraus  = 15;    % quant oscil.la la direccio del vent (graus)
         par.complexa.meandreTemps  = 40;    % temps tipic d'aquesta oscil.lacio (s)
+
+        % Ploma real (simulacio PALM). Posicions en metres, en les coordenades del fitxer.
+        par.real.fitxer       = 'tgn_port_dispersion_3d_N03_PM10_t0.nc';
+        par.real.variable     = 'kc_PM10';           % concentracio de PM10 (kg/m^3)
+        par.real.zona         = [237 538 0 500];     % tros que es llegeix: [xmin xmax ymin ymax]
+        par.real.alcadaMaxima = 50;                  % ... fins a aquesta alcada
+        par.real.posFuga      = [387.5 27.5 11.5];   % on es la fuga (el maxim de concentracio)
+        par.real.direccioVent = 90;                  % cap a on bufa el vent (graus: 0 = +x, 90 = +y)
     end
 
     function camp = generar(tipus, dimensio, escenari, par)
@@ -98,6 +111,74 @@ methods (Static)
             end
         end
         camp.c(camp.c < 1e-4) = 0;           % el sensor no ho nota, i aixi el fitxer ocupa molt menys
+    end
+
+    function camp = importarPalm(dimensio, par)
+    %IMPORTARPALM  Llegeix la ploma real (el .nc de PALM) i la deixa com les
+    %   simulades (la struct camp), perque el dron la pugui fer servir igual:
+    %
+    %     1. Retalla la zona de cerca. El fitxer sencer son 750 x 750 x 202
+    %        punts (1 m de resolucio): nomes se'n llegeix un tros.
+    %     2. Fa la mitjana de cada punt amb els del seu voltant (un cub de
+    %        5 m): el sensor no mesura en un punt, sino al llarg dels 5 m que
+    %        el dron recorre en un pas.
+    %     3. La gira perque el vent bufi cap a +x, que es el que suposa el
+    %        dron. Nomes quarts de volta (rot90), aixi no cal interpolar.
+    %     4. Canvia les unitats de la concentracio (kg/m^3) perque el sensor
+    %        hi compti el mateix que a la ploma gaussiana (mateix flux Q/U).
+    %
+    %   Dins dels tancs i edificis el fitxer no te valor (NaN): hi posem c = 0.
+        r = par.real;
+        x = ncread(r.fitxer, 'x')';
+        y = ncread(r.fitxer, 'y')';
+        z = ncread(r.fitxer, 'zu_3d')';
+
+        % 1. Retall: es llegeix nomes la zona i les alcades que volem
+        ix = find(x >= r.zona(1) & x <= r.zona(2));
+        iy = find(y >= r.zona(3) & y <= r.zona(4));
+        iz = find(z > 0 & z <= r.alcadaMaxima);    % z = 0 es sota terra (i aixi el pas es 1 m)
+        c  = ncread(r.fitxer, r.variable, [ix(1) iy(1) iz(1) 1], [numel(ix) numel(iy) numel(iz) 1]);
+        c  = double(c);
+        c(isnan(c) | c < 0) = 0;             % buits (tancs, edificis, sota terra) i soroll numeric
+
+        % 2. Mitjana en un cub de 5 x 5 x 5 punts (convolucio amb un nucli constant)
+        c = convn(c, ones(5, 5, 5) / 125, 'same');
+
+        % 3. Gir de k quarts de volta (k > 0: sentit antihorari) fins que el vent va cap a +x.
+        %    rot90 gira el pla (x, y) de totes les alcades alhora.
+        k = -round(r.direccioVent / 90);
+        c = rot90(c, k);
+        % La fuga es gira igual: marquem la seva cel.la en una matriu i girem la matriu
+        [~, ixFuga] = min(abs(x(ix) - r.posFuga(1)));
+        [~, iyFuga] = min(abs(y(iy) - r.posFuga(2)));
+        marca = false(numel(ix), numel(iy));
+        marca(ixFuga, iyFuga) = true;
+        [ixFuga, iyFuga] = find(rot90(marca, k));
+        h = x(2) - x(1);                     % resolucio horitzontal (1 m)
+        camp.x = (0:size(c, 1) - 1) * h;     % eixos nous, que comencen a 0
+        camp.y = (0:size(c, 2) - 1) * h;
+        camp.z = z(iz);
+        camp.t = 0;                          % un sol instant: la ploma real esta "congelada"
+        camp.posFuga = [camp.x(ixFuga) camp.y(iyFuga) r.posFuga(3)];
+
+        % 4. Unitats. Si sumem la concentracio de tot un pla perpendicular al
+        %    vent (x constant), I(x) = sum(c) * dy * dz, obtenim la massa que
+        %    travessa el pla cada segon dividida per la velocitat del vent. En
+        %    una ploma gaussiana val exactament Q/U, a qualsevol distancia.
+        %    Multipliquem la ploma real perque la mediana de I(x) vent avall de
+        %    la fuga sigui la Q/U de la gaussiana (la que el dron fa servir de model).
+        dz = camp.z(2) - camp.z(1);          % pas vertical (1 m)
+        I  = squeeze(sum(sum(c, 2), 3)) * h * dz;
+        g  = par.gaussiana;
+        c  = c * (g.emissio / g.vent) / median(I(camp.x > camp.posFuga(1)));
+
+        if strcmp(dimensio, '2d')
+            [~, nivell] = min(abs(camp.z - camp.posFuga(3)));   % 2D: nomes l'alcada de la fuga
+            c = c(:, :, nivell);
+            camp.z = camp.z(nivell);
+        end
+        camp.c = single(c);
+        camp.c(camp.c < 1e-4) = 0;           % com a les plomes simulades
     end
 
     function guardar(camp, fitxer)
