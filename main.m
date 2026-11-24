@@ -4,14 +4,15 @@ function main()
 %   Tria les opcions de sota i executa amb F5. El codi esta en 3 fitxers:
 %
 %     main.m   Aquest: opcions, escenari, simulacio i dibuix.
-%     Ploma.m  Genera la ploma (4 versions) i la guarda en un fitxer .nc.
+%     Ploma.m  Genera la ploma (4 versions) o importa la real, i la guarda en un fitxer .nc.
 %     Dron.m   Classe Dron: parametres, sensor i algorismes de cerca.
 %
-%   Com funciona:  Ploma.generar -> fitxer .nc -> Ploma.llegir -> el dron vola
+%   Com funciona:  Ploma.generar      -> fitxer .nc -> Ploma.llegir -> el dron vola
+%                  Ploma.importarPalm -> (ploma real, del .nc de PALM)
 
 %% ============================== OPCIONS ==============================
 opcions.dimensio     = '3d';         % '2d' o '3d'
-opcions.tipusPloma   = 'complexa';   % 'gaussiana' o 'complexa'
+opcions.tipusPloma   = 'real';       % 'gaussiana', 'complexa' o 'real' (la de PALM)
 opcions.algorisme    = 'infotaxis';  % 'infotaxis' o 'gradient'
 opcions.generarPloma = true;         % false = fa servir el .nc que ja hi ha (no el torna a generar)
 opcions.llavor       = 1;            % mateix numero = mateixa simulacio ([] = cada cop diferent)
@@ -20,20 +21,31 @@ opcions.dibuixaCada  = 2;            % redibuixa cada tants segons de simulacio
 
 %% ============================= ESCENARI ==============================
 % Unitats: metres i segons. El vent bufa cap a +x i el terra es z = 0.
-escenari.midaX          = 400;           % llargada de la zona (direccio del vent)
-escenari.midaY          = 300;           % amplada de la zona (de traves al vent)
-escenari.midaZ          = 50;            % alcada de la zona (nomes en 3D)
-escenari.posFuga        = [60 150 10];   % on es la fuga [x y z] (el dron NO ho sap)
-escenari.posInicialDron = [340 215 30];  % d'on surt el dron [x y z]
+if strcmp(opcions.tipusPloma, 'real')
+    % La zona i la fuga venen del fitxer de PALM (vegeu Ploma.parametres):
+    % 499 x 300 m, amb la fuga a [27 150 11.5]. Nomes cal dir d'on surt el dron.
+    escenari.posInicialDron = [307 215 30];  % 280 m vent avall i 65 m de costat, com a sota
+else
+    escenari.midaX          = 400;           % llargada de la zona (direccio del vent)
+    escenari.midaY          = 300;           % amplada de la zona (de traves al vent)
+    escenari.midaZ          = 50;            % alcada de la zona (nomes en 3D)
+    escenari.posFuga        = [60 150 10];   % on es la fuga [x y z] (el dron NO ho sap)
+    escenari.posInicialDron = [340 215 30];  % d'on surt el dron [x y z]
+end
 
 %% ============================ PARAMETRES =============================
 % Els valors per defecte son a Ploma.m i Dron.m. Es poden canviar aqui, per exemple:
 %   parDron.velocitat = 8;      parPloma.complexa.vent = 3;
 parPloma = Ploma.parametres();
 parDron  = Dron.parametres();
-% El que el dron sap de la ploma (per a l'infotaxis): li diem el tipus i els seus parametres
-parDron.model = parPloma.(opcions.tipusPloma);
-parDron.model.tipus = opcions.tipusPloma;
+% El que el dron sap de la ploma (per a l'infotaxis): li diem el tipus i els seus parametres.
+% La real no la coneix: suposa que es gaussiana (importarPalm l'escala perque hi encaixi).
+tipusModel = opcions.tipusPloma;
+if strcmp(tipusModel, 'real')
+    tipusModel = 'gaussiana';
+end
+parDron.model = parPloma.(tipusModel);
+parDron.model.tipus = tipusModel;
 
 %% ============================ SIMULACIO ==============================
 if ~isempty(opcions.llavor)
@@ -41,10 +53,16 @@ if ~isempty(opcions.llavor)
 end
 fitxer = sprintf('ploma_%s_%s.nc', opcions.tipusPloma, opcions.dimensio);
 if opcions.generarPloma
-    camp = Ploma.generar(opcions.tipusPloma, opcions.dimensio, escenari, parPloma);
+    if strcmp(opcions.tipusPloma, 'real')
+        camp = Ploma.importarPalm(opcions.dimensio, parPloma);
+    else
+        camp = Ploma.generar(opcions.tipusPloma, opcions.dimensio, escenari, parPloma);
+    end
     Ploma.guardar(camp, fitxer);
 end
 camp = Ploma.llegir(fitxer);                 % el dron treballa amb el que hi ha al fitxer
+escenari.midaX = camp.x(end);                % la zona de vol es la del fitxer
+escenari.midaY = camp.y(end);
 
 res = simular(opcions, escenari, camp, parDron);
 fprintf('%s, ploma %s, algorisme %s: %s\n', upper(opcions.dimensio), ...
